@@ -1,0 +1,30 @@
+[package]
+name = "rustspeedtest"
+version = "0.1.0"
+edition = "2021"
+homepage = "https://github.com/charSLee013/RustSpeedTest"
+repository = "https://github.com/charSLee013/RustSpeedTest"
+license = "MIT"
+keywords = ["speedtest","tcp latency"]
+readme="README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+cidr-utils = "0.5.9"
+async-std = {version="1.12.0"}
+futures = "0.3"
+itertools = "0.10.5"
+rand = "0.8.5"
+indicatif = "0.17.2"
+clap="4.0.29"
+flamer = "0.4.0"
+structopt = "0.3.20"
+
+[profile.release]
+lto = true
+panic = 'abort'
+opt-level = 3
+
+[[bin]]
+name = "rustspeedtest"
+path = "src/main.rs"
