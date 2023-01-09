@@ -2,35 +2,34 @@
 
 ---
 
-This tool is used to test the TCP latency and download speed(TODO) within different CIDR blocks.
+这个工具用于测速不同CIDR域内的TCP 延迟和下载速度。
 
-[中文说明](https://github.com/charSLee013/RustSpeedTest/README-zh.md)
+## 使用 🔨
 
-## Usage 🔨
-
-Use the following command to run the tool:
+使用以下命令运行工具：
 
 ```bash
 cargo run -- CIDR
 ```
 
-For example, to test the TCP latency within the `192.0.2.0/24` block, use the following command:
+其中 `CIDR` 是你想要测速的 CIDR 域。此外，你也可以指定一个包含要测速的 CIDR 域列表的文件路径，如下所示：
+
+例如，要测速 `192.0.2.0/24` 域内的 TCP 延迟，请使用以下命令：
 
 ```bash
 cargo run -- 192.0.2.0/24
 ```
 
-Or, to test the TCP latency of all the CIDR blocks listed in `ip.txt`, use the following command:
+或者，要测速 `ip.txt` 中列出的所有 CIDR 域的 TCP 延迟，请使用以下命令：
 
 ```bash
 cargo run -- ip.txt
 ```
 
-## Help ℹ️
+## 帮助信息 ℹ️
 
 ```bash
 cargo run -- -h
-
 USAGE:
     rustspeedtest [OPTIONS] [-- <args>...]
 
@@ -54,17 +53,16 @@ ARGS:
                  192.168.1.1/24'
 ```
 
-## Features and Limitations ⚡️
+## 特点和局限性 ⚡️
 
-- TCP latency testing within blocks is supported
-- Results are sorted by latency time
-- Low CPU and memory usage
-- TODO: Download speed testing for low latency IPs
+- 支持在域内测速 TCP 延迟
+- 结果按照延迟时间排序
+- TODO: 为延迟低的 IP 测速下载速度
 
-## License 📜
+## 协议 📜
 
-This tool is licensed under the MIT license. For more details, see the [LICENSE](https://github.com/charSLee013/RustSpeedTest/LICENSE) file.
+这个工具使用 MIT 协议。有关更多细节，请参见 [LICENSE](https://github.com/charSLee013/RustSpeedTest/LICENSE) 文件。
 
-## Developers 👨‍💻
+## 开发人员 👨‍💻
 
-- [charSLee013](https://github.com/charSLee013) - Initial development and maintenance
+- [charSLee013](https://github.com/charSLee013) - 初始开发和维护
