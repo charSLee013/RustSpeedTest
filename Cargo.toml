@@ -19,6 +19,10 @@ indicatif = "0.17.2"
 clap="4.0.29"
 flamer = "0.4.0"
 structopt = "0.3.20"
+nix = "0.26.1"
+socketstat = "0.1.0"
+reqwest = {version="0.11.13",features=["blocking","gzip","brotli","stream"]}
+tokio = "*"
 
 [profile.release]
 lto = true

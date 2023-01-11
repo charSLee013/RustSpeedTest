@@ -7,6 +7,8 @@ use input::Opts;
 use scanner::Scanner;
 use std::time::Duration;
 
+mod download;
+
 mod input;
 mod scanner;
 mod utils;
