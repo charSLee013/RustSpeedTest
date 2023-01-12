@@ -1,7 +1,9 @@
-use async_std::{task::block_on, stream::StreamExt};
-use reqwest::{Client, Url};
+use async_std::{stream::StreamExt};
+use reqwest::{Client, ClientBuilder, Url};
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    fmt::{self},
+    io::{Error, ErrorKind},
+    net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -10,40 +12,108 @@ pub struct Downloader {
     tries: u8,
     host: String,
     timeout: Duration,
-    buffsize: usize,
+    connect_timeout: Duration,
     port: u16,
-    path: String,
+    url: String,
 }
 
 impl Downloader {
+    pub fn new(
+        ips: &[IpAddr],
+        tries: u8,
+        host: String,
+        timeout: Duration,
+        connect_timeout: Duration,
+        port: u16,
+        url: String,
+    ) -> Self {
+        Downloader {
+            ips: ips.to_owned(),
+            tries,
+            host,
+            timeout,
+            connect_timeout,
+            port,
+            url,
+        }
+    }
+
+    pub fn run(&self) -> Vec<Speed> {
+        let mut speeds = Vec::new();
+        if self.ips.is_empty() {
+            println!("No measureable IP addresss");
+            return speeds;
+        }
+
+        let socket_addrs = self.ips.iter().map(|ip| SocketAddr::new(*ip, self.port));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let url = self
+            .create_url()
+            .unwrap_or_else(|_| panic!("Cannot parse url: {}", self.url));
+
+        for socket_addr in socket_addrs {
+            for _ in 1..=self.tries {
+                match rt.block_on(self.measure_download_speed(socket_addr, url.clone())) {
+                    Ok(speed) => {
+                        speeds.push(speed);
+                        break;
+                    }
+                    Err(e) => {
+                        println!("Some thing wrong: {}", e);
+                    }
+                }
+            }
+        }
+
+        speeds
+    }
+
     pub async fn measure_download_speed(
         &self,
-        url: &str,
-        ip: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let addr: SocketAddr = format!("{}:{}", ip, self.port).parse().unwrap();
+        addr: SocketAddr,
+        url: Url,
+    ) -> Result<Speed, Box<dyn std::error::Error>> {
+        let client = self.create_client().resolve(&self.host, addr).build()?;
+        let start_time = Instant::now();
+        let response = self.make_request(client, url).await?;
+        self.handle_response(response, start_time, addr.ip()).await
+    }
 
-        let url = Url::parse(url)?;
+    fn create_url(&self) -> Result<Url, url::ParseError> {
+        Url::parse(&self.url)
+    }
 
-        let client = reqwest::Client::builder()
+    fn create_client(&self) -> ClientBuilder {
+        reqwest::Client::builder()
             .no_proxy()
             .timeout(self.timeout)
-            .connect_timeout(Duration::from_millis(5000))
+            .connect_timeout(self.connect_timeout)
             .redirect(reqwest::redirect::Policy::limited(10))
-            .resolve(&self.host, addr)
-            .build()?;
+        // .resolve(&self.host, addr)
+        // .build()
+    }
 
-        let start_time = Instant::now();
-        let response = client
+    async fn make_request(
+        &self,
+        client: Client,
+        url: Url,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        client
             .get(url)
             .header(reqwest::header::USER_AGENT, "curl/7.82.0-DEV")
             .send()
-            .await?;
-        
+            .await
+    }
 
+    async fn handle_response(
+        &self,
+        response: reqwest::Response,
+        start_time: Instant,
+        ip: IpAddr,
+    ) -> Result<Speed, Box<dyn std::error::Error>> {
         if response.status().is_success() {
             println!(
-                "Your set IP:{} <=> request remote addr: {}",
+                "Your set IP:{} <=> request remoteaddr: {}",
                 ip,
                 response.remote_addr().unwrap().ip()
             );
@@ -52,72 +122,64 @@ impl Downloader {
             let mut stream = response.bytes_stream();
             let mut bytes_downloaded = 0;
             while let Some(chunk) = stream.next().await {
-                if let Ok(buffer) = chunk{
-                    bytes_downloaded+=buffer.len();
+                if let Ok(buffer) = chunk {
+                    bytes_downloaded += buffer.len();
                 }
             }
 
             let elapsed_time = start_time.elapsed();
-            let total_download_f64 = bytes_downloaded as f64;
-            let bytes_per_sec = total_download_f64 / elapsed_time.as_secs_f64();
-            println!(
-                "Download speed: {}/s",
-                self.human_readable_size(bytes_per_sec)
-            );
-
-            println!(
-                "Total Download size: {})",
-                self.human_readable_size(total_download_f64)
-            );
+            Ok(Speed {
+                ip,
+                total_download: bytes_downloaded,
+                consume: elapsed_time,
+            })
         } else {
-            println!("Download failed: {:?}", response);
+            Err(Box::new(Error::new(
+                ErrorKind::Other,
+                format!("Download failed: {:?}", response),
+            )))
         }
-
-        Ok(())
     }
+}
 
-    fn human_readable_size(&self, size: f64) -> String {
-        let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-        let mut size = size;
-        let mut idx = 0;
-        while size > 1024.0 {
-            size /= 1024.0;
-            idx += 1;
-        }
-        format!("{:.2} {}", size, units[idx])
+pub struct Speed {
+    pub ip: IpAddr,
+    pub total_download: usize,
+    pub consume: Duration,
+}
+
+impl fmt::Display for Speed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "IP: {}\t Download Speed: {}",
+            self.ip,
+            super::utils::human_readable_size(
+                (self.total_download / self.consume.as_secs() as usize) as f64
+            )
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::time::Duration;
 
-    use futures::executor::block_on;
-
-    use super::Downloader;
-
     #[test]
-    fn test_download_file() {
+    fn test_create_url() {
         let downloader = Downloader {
-            ips: vec![],
-            tries: 4,
-            host: String::from("cf-speedtest.hollc.cn"),
-            timeout: Duration::from_secs(5),
-            buffsize: 4096,
-            port: 443,
-            path: String::from("/1gb.test"),
+            ips: Vec::new(),
+            tries: 3,
+            host: "www.example.com".to_string(),
+            timeout: Duration::from_secs(10),
+            connect_timeout: Duration::from_secs(5),
+            port: 80,
+            url: "https://www.example.com/test".to_string(),
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        if let Err(e) = rt.block_on(
-            downloader
-                .measure_download_speed("https://cf-speedtest.hollc.cn/1gb.test", "104.22.78.54"),
-        ) {
-            panic!("Error: {}", e);
-        }
-
-        // if let Err(e) = downloader.download_file(&downloader.host, &String::from("104.21.33.129")) {
-        //     println!("Error: {}", e);
-        // }
+        let url = downloader.create_url();
+        assert!(url.is_ok());
+        assert_eq!(url.unwrap().as_str(), "https://www.example.com/test");
     }
 }
