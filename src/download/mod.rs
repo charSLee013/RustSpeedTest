@@ -1,4 +1,4 @@
-use async_std::{stream::StreamExt};
+use async_std::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Url};
 use std::{
     fmt::{self},
