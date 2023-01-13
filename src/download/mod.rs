@@ -112,12 +112,6 @@ impl Downloader {
         ip: IpAddr,
     ) -> Result<Speed, Box<dyn std::error::Error>> {
         if response.status().is_success() {
-            println!(
-                "Your set IP:{} <=> request remoteaddr: {}",
-                ip,
-                response.remote_addr().unwrap().ip()
-            );
-
             //using copy_to_xxx instead of copy_to
             let mut stream = response.bytes_stream();
             let mut bytes_downloaded = 0;
