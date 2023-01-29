@@ -1,6 +1,7 @@
 use async_std::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Url};
 use std::{
+    cmp::Ordering,
     fmt::{self},
     io::{Error, ErrorKind},
     net::{IpAddr, SocketAddr},
@@ -46,14 +47,15 @@ impl Downloader {
         }
 
         let socket_addrs = self.ips.iter().map(|ip| SocketAddr::new(*ip, self.port));
-        let rt = tokio::runtime::Runtime::new().unwrap();
         let url = self
             .create_url()
             .unwrap_or_else(|_| panic!("Cannot parse url: {}", self.url));
 
         for socket_addr in socket_addrs {
             for _ in 1..=self.tries {
-                match rt.block_on(self.measure_download_speed(socket_addr, url.clone())) {
+                match async_std::task::block_on(
+                    self.measure_download_speed(socket_addr, url.clone()),
+                ) {
                     Ok(speed) => {
                         speeds.push(speed);
                         break;
@@ -115,9 +117,17 @@ impl Downloader {
             //using copy_to_xxx instead of copy_to
             let mut stream = response.bytes_stream();
             let mut bytes_downloaded = 0;
-            while let Some(chunk) = stream.next().await {
-                if let Ok(buffer) = chunk {
-                    bytes_downloaded += buffer.len();
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(buffer) => {
+                        bytes_downloaded += buffer.len();
+                    }
+                    Err(e) => {
+                        if e.to_string().contains("timed out") {
+                            break;
+                        }
+                        return Err(Box::new(e));
+                    }
                 }
             }
 
@@ -141,6 +151,28 @@ pub struct Speed {
     pub total_download: usize,
     pub consume: Duration,
 }
+
+impl Ord for Speed {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.total_download.cmp(&self.total_download)
+    }
+}
+
+impl PartialOrd for Speed {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Speed {
+    fn eq(&self, other: &Self) -> bool {
+        self.consume == other.consume
+            && self.total_download == other.total_download
+            && self.ip == other.ip
+    }
+}
+
+impl Eq for Speed {}
 
 impl fmt::Display for Speed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
