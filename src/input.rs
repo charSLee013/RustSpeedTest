@@ -27,9 +27,9 @@ pub struct Opts {
     #[structopt(short = "o", long, default_value = "result.csv")]
     pub output: String,
 
-    /// Disable download speed test
-    #[structopt(long)]
-    pub disable_download: Option<bool>,
+    /// Enable download speed test
+    #[structopt(short,long)]
+    pub enable_download: bool,
 
     /// The number of download speed test.
     #[structopt(long, default_value = "10")]
@@ -39,7 +39,7 @@ pub struct Opts {
     #[structopt(long, default_value = "443")]
     pub download_port: u16,
 
-    /// Random count of IPs to test for each CIDR.
+    /// Random count of IPs to test for all CIDR.
     #[structopt(short = "rn", long, default_value = "0")]
     pub random_number: usize,
 
@@ -60,7 +60,8 @@ pub struct Opts {
     pub download_url: String,
 
     /// speed test timeout;
-    #[structopt(short = "d")]
+    #[structopt(long, default_value = "5")]
+    pub download_timeout: u64,
 
     /// The files or CIDRs to process [default=ip.txt].
     /// Example: 'rustspeedtest -n 2500 -d 20 -- 192.168.1.1/24'.
@@ -77,13 +78,14 @@ impl Default for Opts {
             display: 10,
             timeout: 9999,
             output: "result.csv".to_string(),
-            disable_download: None,
+            enable_download: true,
             download_port: 443,
             download_number: 10,
             random_number: 0,
             avg_delay_upper: 9999,
             avg_delay_lower: 0,
             download_url: "https://speed.cloudflare.com/__down?bytes=200000000".to_string(),
+            download_timeout:5,
             args: vec![],
         }
     }

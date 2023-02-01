@@ -1,17 +1,13 @@
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, self},
     fmt,
     net::{IpAddr, SocketAddr},
     num::NonZeroU8,
     time::{Duration, Instant},
 };
 
-// use async_std::io;
-// use async_std::net::{IpAddr, Shutdown, SocketAddr, TcpStream};
-// use async_std::prelude::*;
-// use futures::{select, stream::FuturesUnordered, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use tokio::{io::AsyncWriteExt, net::tcp, sync::mpsc, time::Timeout};
+use tokio::{io::AsyncWriteExt, sync::mpsc};
 
 #[derive(Debug)]
 // 扫描基本设置
@@ -80,41 +76,52 @@ impl Scanner {
             .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ "),
         );
 
-        let ips = self.ips.clone();
-        for ip in &ips {
+        let mut ips_iter = self.ips.clone().into_iter();
+
+        for _ in 0..cmp::min(self.ips.len(), self.batch_size) {
+            let ip = ips_iter.next().unwrap();
             let tx = tx.clone();
-            let socket = SocketAddr::new(*ip, self.port);
+            let socket = SocketAddr::new(ip, self.port);
             let times = self.times;
             let timeout = self.timeout;
 
             tokio::spawn(async move {
-                let delay = Scanner::tcp_socket(times, timeout, socket).await;
-                tx.send(delay).await.unwrap();
+                let delay = Scanner::tcp_socket(times, timeout, socket);
+                tx.send(delay.await).await.unwrap();
             });
         }
-        for _ in 0..total {
-            if let Some(message) = rx.recv().await {
-                match message {
-                    Ok(delay) => {
-                        pb.set_message(format!("Addr: {}", delay.ip));
 
-                        let delay_millis = delay.consume.as_millis();
-                        if delay_millis < self.avg_delay_upper
-                            && delay_millis > self.avg_delay_lower
-                        {
-                            res.push(delay);
-                        }
-                    }
-                    Err(_) => {}
+        for _ in 0..total {
+            if let Some(Ok(delay)) = rx.recv().await {
+                pb.set_message(format!("Addr: {}", delay.ip));
+
+                let delay_millis = delay.consume.as_millis();
+                if delay_millis < self.avg_delay_upper && delay_millis > self.avg_delay_lower {
+                    res.push(delay);
                 }
             }
+
+
             pb.inc(1);
+            if let Some(ip) = ips_iter.next(){
+                let tx = tx.clone();
+                let socket = SocketAddr::new(ip, self.port);
+                let times = self.times;
+                let timeout = self.timeout;
+
+                tokio::spawn(async move {
+                    let delay = Scanner::tcp_socket(times, timeout, socket);
+                    tx.send(delay.await).await.unwrap();
+                });
+            }
         }
 
         pb.finish_with_message("finshed");
 
         res
     }
+
+
 
     // pub async fn run(&self) -> Vec<Delay> {
     //     // 创建socketAddr的迭代器
@@ -126,7 +133,7 @@ impl Scanner {
     //     // 这里创建连接池的大小为 batch_size
     //     for _ in 0..self.batch_size {
     //         if let Some(socket) = socket_addrs.next() {
-    //             ftrs.push(self.tcp_socket(socket));
+    //             ftrs.push(Scanner::tcp_socket(self.times,self.timeout,socket));
     //         }
     //     }
 
@@ -144,7 +151,7 @@ impl Scanner {
     //     /// 只有连接池有空余才塞入任务
     //     while let Some(result) = ftrs.next().await {
     //         if let Some(socket) = socket_addrs.next() {
-    //             ftrs.push(self.tcp_socket(socket));
+    //             ftrs.push(Scanner::tcp_socket(self.times,self.timeout,socket));
     //         }
 
     //         match result {
@@ -175,7 +182,6 @@ impl Scanner {
     ) -> std::io::Result<Delay> {
         let mut total_duration = Duration::new(0, 0);
         let mut successful_calls = 0;
-        // let times = self.times.get();
 
         for _ in 1..=times.get() {
             let start = Instant::now();
@@ -185,7 +191,9 @@ impl Scanner {
             match result {
                 Ok(mut tcp_stream) => {
                     tokio::spawn(async move {
-                        tcp_stream.shutdown().await;
+                        match tcp_stream.shutdown().await{
+                            _=>{}
+                        }
                     });
 
                     successful_calls += 1;
@@ -273,7 +281,7 @@ impl std::fmt::Display for Delay {
 mod test {
     use std::{net::IpAddr, num::NonZeroU8, str::FromStr, time::Duration};
 
-    use async_std::task::block_on;
+    use futures::executor::block_on;
 
     // use crate::scanner::sort_delays;
 

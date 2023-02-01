@@ -1,4 +1,3 @@
-use async_std::stream::StreamExt;
 use reqwest::{Client, ClientBuilder, Url};
 use std::{
     cmp::Ordering,
@@ -7,6 +6,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
+
 
 pub struct Downloader {
     ips: Vec<IpAddr>,
@@ -39,7 +39,7 @@ impl Downloader {
         }
     }
 
-    pub fn run(&self) -> Vec<Speed> {
+    pub async fn run(&self) -> Vec<Speed> {
         let mut speeds = Vec::new();
         if self.ips.is_empty() {
             println!("No measureable IP addresss");
@@ -53,16 +53,9 @@ impl Downloader {
 
         for socket_addr in socket_addrs {
             for _ in 1..=self.tries {
-                match async_std::task::block_on(
-                    self.measure_download_speed(socket_addr, url.clone()),
-                ) {
-                    Ok(speed) => {
-                        speeds.push(speed);
-                        break;
-                    }
-                    Err(e) => {
-                        println!("Some thing wrong: {}", e);
-                    }
+                if let Ok(speed) = self.measure_download_speed(socket_addr, url.clone()).await {
+                    speeds.push(speed);
+                    break;
                 }
             }
         }
@@ -117,7 +110,7 @@ impl Downloader {
             //using copy_to_xxx instead of copy_to
             let mut stream = response.bytes_stream();
             let mut bytes_downloaded = 0;
-            while let Some(result) = stream.next().await {
+            while let Some(result) = futures::StreamExt::next(&mut stream).await {
                 match result {
                     Ok(buffer) => {
                         bytes_downloaded += buffer.len();
@@ -180,9 +173,13 @@ impl fmt::Display for Speed {
             f,
             "IP: {}\t Download Speed: {}",
             self.ip,
-            super::utils::human_readable_size(
-                (self.total_download / self.consume.as_secs() as usize) as f64
-            )
+            if self.consume.as_secs() != 0 {
+                super::utils::human_readable_size(
+                    (self.total_download / self.consume.as_secs() as usize) as f64,
+                )
+            } else {
+                "0".to_string()
+            }
         )
     }
 }

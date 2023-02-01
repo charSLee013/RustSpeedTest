@@ -1,11 +1,9 @@
 use rand::seq::index::sample;
 use std::collections::HashSet;
 use std::net::IpAddr;
-use url::quirks::host;
 
-use async_std::io::ReadExt;
 use download::Downloader;
-use futures::executor::block_on;
+
 use input::Opts;
 
 use scanner::Scanner;
@@ -29,6 +27,14 @@ fn main() {
         std::process::exit(1);
     }
 
+    // create a tokio runtime
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .global_queue_interval(61)
+        .event_interval(1)
+        .build()
+        .unwrap();
+
     let scanner = Scanner::new(
         ips,
         opts.number,
@@ -38,7 +44,8 @@ fn main() {
         opts.avg_delay_upper,
         opts.avg_delay_lower,
     );
-    let mut result = block_on(scanner.run());
+
+    let mut result = rt.block_on(scanner.run());
     result.sort();
 
     // display result
@@ -46,7 +53,8 @@ fn main() {
         println!("{}", r);
     }
 
-    if opts.disable_download.is_some() {
+    println!("enable_download: {}", &opts.enable_download);
+    if !opts.enable_download {
         println!("Disable download speed test.exiting...");
         return;
     }
@@ -61,6 +69,14 @@ fn main() {
         Ok(h) => h,
         Err(e) => {
             println!("Cannot get host for speed test url;\nError message: {}", e);
+
+            if let Err(e) = utils::write_to_csv(&opts.output, &result) {
+                println!(
+                    "Warn: Cannot write result to {}\nError message:{}",
+                    &opts.output, e,
+                );
+            }
+
             std::process::exit(1);
         }
     };
@@ -70,13 +86,13 @@ fn main() {
         &download_ips,
         4,
         domain,
-        Duration::from_secs(10),
-        Duration::from_millis(5000),
+        Duration::from_secs(opts.download_timeout),
+        Duration::from_millis(opts.timeout),
         opts.download_port,
         opts.download_url.to_string(),
     );
 
-    let mut speedtest_result = downloader.run();
+    let mut speedtest_result = rt.block_on(downloader.run());
     speedtest_result.sort();
 
     for r in speedtest_result.iter() {
@@ -103,37 +119,40 @@ fn parse_addresses_from_opt(opts: &Opts) -> Vec<IpAddr> {
             Err(_) => arg.to_string(),
         };
         let parse_ips = utils::parse_addresses(&content);
-        let sample_size = if opts.random_number > 0 && opts.random_number < parse_ips.len() {
-            opts.random_number
-        } else {
-            parse_ips.len()
-        };
-
-        let parse_ips: Vec<IpAddr> = sample(&mut rand::thread_rng(), parse_ips.len(), sample_size)
-            .into_iter()
-            .map(|i| parse_ips[i])
-            .collect();
         ips.extend(parse_ips.iter());
     }
 
     let set: HashSet<IpAddr> = ips.into_iter().collect();
-    set.into_iter().collect()
+    let uniq_ips: Vec<IpAddr> = set.into_iter().collect();
+
+    let sample_size = if opts.random_number > 0 && opts.random_number < uniq_ips.len() {
+        opts.random_number
+    } else {
+        uniq_ips.len()
+    };
+
+    sample(&mut rand::thread_rng(), uniq_ips.len(), sample_size)
+        .into_iter()
+        .map(|i| uniq_ips[i])
+        .collect()
 }
 
 #[cfg(test)]
 mod test {
     use std::net::IpAddr;
-    use std::str::FromStr;
+
     use std::time::Duration;
 
     use crate::download::Downloader;
+    use crate::input::Opts;
+    use crate::parse_addresses_from_opt;
+    use crate::utils::parse_addresses;
 
     use super::scanner;
 
     use super::utils;
-    use async_std::task::block_on;
+
     use rand::seq::SliceRandom;
-    use tokio::runtime::Runtime;
 
     fn default_test_ips() -> String {
         return "173.245.48.0/20
@@ -194,21 +213,17 @@ mod test {
         let ips = utils::parse_addresses(&ips_v4);
         assert!(!ips.is_empty());
 
-        // 随机测试1024个IP以免耗费过长时间
-        let scan_ips: Vec<IpAddr> = ips
-            .choose_multiple(&mut rand::thread_rng(), 1024)
-            .cloned()
-            .collect();
         let scan = scanner::Scanner::new(
-            scan_ips,
-            200,
+            ips,
+            2000,
             std::time::Duration::from_millis(5000),
             4,
             443,
             9999,
             0,
         );
-        let mut result = block_on(scan.run());
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut result = rt.block_on(scan.run());
         result.sort();
         assert!(!result.is_empty());
 
@@ -224,12 +239,13 @@ mod test {
             4,
             "speed.cloudflare.com".to_string(),
             Duration::from_secs(10),
-            Duration::from_millis(5000),
-            80,
-            "http://speed.cloudflare.com/__down?bytes=2000000000".to_string(),
+            Duration::from_millis(2000),
+            443,
+            "https://speed.cloudflare.com/__down?bytes=2000000000".to_string(),
         );
+        let rt = tokio::runtime::Runtime::new().unwrap();
 
-        for r in downloader.run().iter() {
+        for r in rt.block_on(downloader.run()).iter() {
             println!("{}", r);
         }
     }
@@ -237,12 +253,10 @@ mod test {
     #[test]
     #[ignore]
     fn downloadtest_from_cloudflare() {
-        let speed_test_ips = vec![
-            IpAddr::from_str("173.245.58.109").unwrap(),
-            IpAddr::from_str("173.245.59.176").unwrap(),
-            IpAddr::from_str("173.245.59.148").unwrap(),
-            IpAddr::from_str("173.245.59.176").unwrap(),
-        ];
+        let speed_test_ips: Vec<IpAddr> = parse_addresses(&default_test_ips())
+            .into_iter()
+            .take(10)
+            .collect();
 
         // download speed test
         let downloader: Downloader = Downloader::new(
@@ -254,9 +268,27 @@ mod test {
             443,
             "https://speed.cloudflare.com/__down?bytes=2000000000".to_string(),
         );
-
-        for r in downloader.run().iter() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for r in rt.block_on(downloader.run()).iter() {
             println!("{}", r);
         }
+    }
+
+    #[test]
+    fn test_parse_addresses_from_opt() {
+        let mut opts = Opts::default();
+        opts.random_number = 0;
+        opts.args = vec!["192.168.1.1/24".to_string(), "192.168.1.1/28".to_string()];
+
+        let ips = parse_addresses_from_opt(&opts);
+        assert_eq!(ips.len(), 256);
+
+        opts.random_number = 50;
+        let ips = parse_addresses_from_opt(&opts);
+        assert_eq!(ips.len(), opts.random_number);
+
+        opts.random_number = 9999;
+        let ips = parse_addresses_from_opt(&opts);
+        assert_eq!(ips.len(), 256);
     }
 }
