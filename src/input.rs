@@ -20,7 +20,7 @@ pub struct Opts {
     pub display: usize,
 
     /// The timeout in milliseconds before a test is assumed to be failed.
-    #[structopt(long, default_value = "9999")]
+    #[structopt(long, default_value = "1000")]
     pub timeout: u64,
 
     /// The file to write the results to.
