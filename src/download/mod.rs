@@ -7,7 +7,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-
 pub struct Downloader {
     ips: Vec<IpAddr>,
     tries: u8,

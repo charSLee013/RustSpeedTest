@@ -1,5 +1,6 @@
 use std::{
-    cmp::{Ordering, self},
+    cmp::{self, Ordering},
+    collections::HashMap,
     fmt,
     net::{IpAddr, SocketAddr},
     num::NonZeroU8,
@@ -101,9 +102,8 @@ impl Scanner {
                 }
             }
 
-
             pb.inc(1);
-            if let Some(ip) = ips_iter.next(){
+            if let Some(ip) = ips_iter.next() {
                 let tx = tx.clone();
                 let socket = SocketAddr::new(ip, self.port);
                 let times = self.times;
@@ -121,60 +121,6 @@ impl Scanner {
         res
     }
 
-
-
-    // pub async fn run(&self) -> Vec<Delay> {
-    //     // 创建socketAddr的迭代器
-    //     let mut socket_addrs = self.ips.iter().map(|ip| SocketAddr::new(*ip, self.port));
-
-    //     let mut res: Vec<Delay> = Vec::new();
-    //     let mut ftrs = FuturesUnordered::new();
-
-    //     // 这里创建连接池的大小为 batch_size
-    //     for _ in 0..self.batch_size {
-    //         if let Some(socket) = socket_addrs.next() {
-    //             ftrs.push(Scanner::tcp_socket(self.times,self.timeout,socket));
-    //         }
-    //     }
-
-    //     // 进度条
-    //     let total = self.ips.len();
-    //     let pb = ProgressBar::new(total as u64);
-    //     pb.set_style(
-    //         ProgressStyle::with_template(
-    //             "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-    //         )
-    //         .unwrap()
-    //         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ "),
-    //     );
-
-    //     /// 只有连接池有空余才塞入任务
-    //     while let Some(result) = ftrs.next().await {
-    //         if let Some(socket) = socket_addrs.next() {
-    //             ftrs.push(Scanner::tcp_socket(self.times,self.timeout,socket));
-    //         }
-
-    //         match result {
-    //             Ok(delay) => {
-    //                 pb.set_message(format!("Addr: {}", delay.ip));
-    //                 pb.inc(1);
-
-    //                 let delay_millis = delay.consume.as_millis();
-    //                 if delay_millis < self.avg_delay_upper && delay_millis > self.avg_delay_lower {
-    //                     res.push(delay);
-    //                 }
-    //             }
-    //             Err(_) => {
-    //                 pb.inc(1);
-    //             }
-    //         }
-    //     }
-
-    //     pb.finish_with_message("finshed");
-
-    //     res
-    // }
-
     async fn tcp_socket(
         times: NonZeroU8,
         timeout: Duration,
@@ -191,8 +137,8 @@ impl Scanner {
             match result {
                 Ok(mut tcp_stream) => {
                     tokio::spawn(async move {
-                        match tcp_stream.shutdown().await{
-                            _=>{}
+                        match tcp_stream.shutdown().await {
+                            _ => {}
                         }
                     });
 
@@ -212,7 +158,11 @@ impl Scanner {
 
         Ok(Delay {
             ip: socket.ip(),
-            consume: total_duration,
+            consume: if successful_calls != 0 {
+                Duration::from_nanos((total_duration.as_nanos() / successful_calls as u128) as u64)
+            } else {
+                Duration::from_secs(0)
+            },
             success: successful_calls,
         })
     }
@@ -231,9 +181,22 @@ impl Scanner {
 
 #[derive(Debug)]
 pub struct Delay {
+    /// IP 地址
     pub ip: IpAddr,
+    /// 平均延迟
     pub consume: Duration,
+    /// 成功次数
     pub success: i32,
+}
+
+impl Delay {
+    pub fn to_map(delays: Vec<Delay>) -> HashMap<IpAddr, Delay> {
+        let mut map = HashMap::new();
+        for delay in delays {
+            map.insert(delay.ip, delay);
+        }
+        map
+    }
 }
 
 impl Ord for Delay {

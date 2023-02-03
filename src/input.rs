@@ -28,7 +28,7 @@ pub struct Opts {
     pub output: String,
 
     /// Enable download speed test
-    #[structopt(short,long)]
+    #[structopt(short, long)]
     pub enable_download: bool,
 
     /// The number of download speed test.
@@ -39,7 +39,7 @@ pub struct Opts {
     #[structopt(long, default_value = "443")]
     pub download_port: u16,
 
-    /// Random count of IPs to test for all CIDR.
+    /// Random count of IPs to test for all CIDR. 0 is all.
     #[structopt(short = "rn", long, default_value = "0")]
     pub random_number: usize,
 
@@ -85,7 +85,7 @@ impl Default for Opts {
             avg_delay_upper: 9999,
             avg_delay_lower: 0,
             download_url: "https://speed.cloudflare.com/__down?bytes=200000000".to_string(),
-            download_timeout:5,
+            download_timeout: 5,
             args: vec![],
         }
     }
