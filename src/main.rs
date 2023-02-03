@@ -30,8 +30,6 @@ fn main() {
     // create a tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .global_queue_interval(61)
-        .event_interval(31)
         .build()
         .unwrap();
         
