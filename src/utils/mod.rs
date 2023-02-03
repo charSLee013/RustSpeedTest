@@ -1,9 +1,11 @@
 use cidr_utils::cidr::IpCidr;
 use std::error::Error;
+
 use std::fs;
 use std::io::BufRead;
 use std::{io, net::IpAddr};
 
+use crate::download::Speed;
 use crate::scanner::Delay;
 
 /// 根据字符串解析成ip 地址
@@ -19,19 +21,58 @@ pub fn parse_addresses(ips_str: &str) -> Vec<IpAddr> {
     ips
 }
 
-pub fn write_to_csv(filename: &str, vec: &Vec<Delay>) -> Result<(), Box<dyn Error>> {
+pub fn write_to_csv(
+    filename: &str,
+    delays: Vec<Delay>,
+    speeds: Option<Vec<Speed>>,
+) -> Result<(), Box<dyn Error>> {
     let mut csv = String::new();
+    let titel = "IP,Delay,Success,Speedtest\n".to_string();
 
     // add title
-    csv.push_str("IP,Consume,Success");
-    for delay in vec {
-        csv.push_str(&format!(
-            "{},{},{}\n",
-            delay.ip,
-            delay.consume.as_millis(),
-            delay.success
-        ));
+    csv.push_str(&titel);
+
+    if let Some(speeds) = speeds {
+        if !speeds.is_empty() {
+            let map = Delay::to_map(delays);
+            for speed in speeds {
+                let delay = map.get(&speed.ip).unwrap();
+                csv.push_str(&format!(
+                    "{},{},{},{}\n",
+                    speed.ip,
+                    delay.consume.as_millis(),
+                    delay.success,
+                    if speed.consume.as_secs() != 0 {
+                        super::utils::human_readable_size(
+                            (speed.total_download / speed.consume.as_secs() as usize) as f64,
+                        )
+                    } else {
+                        "0".to_string()
+                    }
+                ))
+            }
+        } else {
+            // If all speed tests fail
+            for delay in delays {
+                csv.push_str(&format!(
+                    "{},{},{},0\n",
+                    delay.ip,
+                    delay.consume.as_millis(),
+                    delay.success
+                ));
+            }
+        }
+    } else {
+        for delay in delays {
+            csv.push_str(&format!(
+                "{},{},{},0\n",
+                delay.ip,
+                delay.consume.as_millis(),
+                delay.success
+            ));
+        }
     }
+
     fs::write(filename, csv)?;
     Ok(())
 }

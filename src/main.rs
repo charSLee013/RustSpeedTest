@@ -6,7 +6,7 @@ use download::Downloader;
 
 use input::Opts;
 
-use scanner::Scanner;
+use scanner::{Scanner, Delay};
 use std::time::Duration;
 
 mod download;
@@ -31,31 +31,26 @@ fn main() {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .global_queue_interval(61)
-        .event_interval(1)
+        .event_interval(31)
         .build()
         .unwrap();
-
-    let scanner = Scanner::new(
-        ips,
-        opts.number,
-        Duration::from_millis(opts.timeout),
-        opts.time,
-        opts.port,
-        opts.avg_delay_upper,
-        opts.avg_delay_lower,
-    );
-
-    let mut result = rt.block_on(scanner.run());
-    result.sort();
+        
+    let result = rt.block_on(run_scanner(ips,&opts));
 
     // display result
     for r in result.iter().take(opts.display) {
         println!("{}", r);
     }
 
-    println!("enable_download: {}", &opts.enable_download);
     if !opts.enable_download {
         println!("Disable download speed test.exiting...");
+
+        if let Err(e) = utils::write_to_csv(&opts.output, result, None) {
+            println!(
+                "Warn: Cannot write result to {}\nError message:{}",
+                &opts.output, e,
+            );
+        }
         return;
     }
 
@@ -69,14 +64,6 @@ fn main() {
         Ok(h) => h,
         Err(e) => {
             println!("Cannot get host for speed test url;\nError message: {}", e);
-
-            if let Err(e) = utils::write_to_csv(&opts.output, &result) {
-                println!(
-                    "Warn: Cannot write result to {}\nError message:{}",
-                    &opts.output, e,
-                );
-            }
-
             std::process::exit(1);
         }
     };
@@ -100,7 +87,7 @@ fn main() {
     }
 
     // write result to file
-    match utils::write_to_csv(&opts.output, &result) {
+    match utils::write_to_csv(&opts.output, result, Some(speedtest_result)) {
         Ok(_) => {}
         Err(error) => {
             println!(
@@ -110,6 +97,23 @@ fn main() {
         }
     }
 }
+
+async fn run_scanner(ips: Vec<IpAddr>, opts: &Opts) -> Vec<Delay> {
+    let scanner = Scanner::new(
+        ips,
+        opts.number,
+        Duration::from_millis(opts.timeout),
+        opts.time,
+        opts.port,
+        opts.avg_delay_upper,
+        opts.avg_delay_lower,
+    );
+
+    let mut result = scanner.run().await;
+    result.sort();
+    result
+}
+
 
 fn parse_addresses_from_opt(opts: &Opts) -> Vec<IpAddr> {
     let mut ips: Vec<IpAddr> = Vec::new();
