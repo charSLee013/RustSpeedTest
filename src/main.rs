@@ -6,7 +6,7 @@ use download::Downloader;
 
 use input::Opts;
 
-use scanner::{Scanner, Delay};
+use scanner::{Delay, Scanner};
 use std::time::Duration;
 
 mod download;
@@ -30,10 +30,12 @@ fn main() {
     // create a tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .global_queue_interval(31)
+        .event_interval(31)
         .build()
         .unwrap();
-        
-    let result = rt.block_on(run_scanner(ips,&opts));
+
+    let result = rt.block_on(run_scanner(ips, &opts));
 
     // display result
     for r in result.iter().take(opts.display) {
@@ -51,12 +53,15 @@ fn main() {
         }
         return;
     }
-
-    let download_ips: Vec<std::net::IpAddr> = result
-        .iter()
-        .take(opts.download_number)
-        .map(|x| x.ip)
-        .collect();
+    let download_ips: Vec<IpAddr> = if opts.download_number == 0 {
+        result.iter().map(|x| x.ip).collect()
+    } else {
+        result
+            .iter()
+            .take(opts.download_number)
+            .map(|x| x.ip)
+            .collect()
+    };
 
     let domain: String = match utils::get_domain_from_url(opts.download_url.as_str()) {
         Ok(h) => h,
@@ -111,7 +116,6 @@ async fn run_scanner(ips: Vec<IpAddr>, opts: &Opts) -> Vec<Delay> {
     result.sort();
     result
 }
-
 
 fn parse_addresses_from_opt(opts: &Opts) -> Vec<IpAddr> {
     let mut ips: Vec<IpAddr> = Vec::new();

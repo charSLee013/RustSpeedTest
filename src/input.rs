@@ -31,7 +31,7 @@ pub struct Opts {
     #[structopt(short, long)]
     pub enable_download: bool,
 
-    /// The number of download speed test.
+    /// The number of download speed test. 0 is all test.
     #[structopt(long, default_value = "10")]
     pub download_number: usize,
 
