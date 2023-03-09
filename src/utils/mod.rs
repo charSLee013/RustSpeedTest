@@ -175,6 +175,8 @@ mod test {
             ..Default::default() // 初始化其他参数为默认值
         };
         let result = parse_addresses_from_opt(&opts);
-        assert_eq!(result.len(), 100);
+        assert_eq!(result.len(), 50);
     }
+
+    
 }

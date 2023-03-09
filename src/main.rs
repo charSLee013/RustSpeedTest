@@ -2,7 +2,9 @@ use rand::seq::index::sample;
 use std::collections::HashSet;
 use std::net::IpAddr;
 
+
 use download::Downloader;
+use routes::CloudflareChecker;
 
 use input::Opts;
 
@@ -10,8 +12,8 @@ use scanner::{Delay, Scanner};
 use std::time::Duration;
 
 mod download;
-
 mod input;
+mod routes;
 mod scanner;
 mod utils;
 
@@ -30,7 +32,7 @@ fn main() {
     // create a tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .global_queue_interval(31)
+        .global_queue_interval(u32::MAX)
         .event_interval(31)
         .build()
         .unwrap();
@@ -40,6 +42,18 @@ fn main() {
     // display result
     for r in result.iter().take(opts.display) {
         println!("{}", r);
+    }
+
+    // 检查路由是否跳动
+    let mut result_ips: Vec<IpAddr> = result.iter().map(|x| x.ip).collect();
+    if opts.check_reoutes {
+        result_ips = rt.block_on(run_checker(result_ips, &opts));
+        println!(
+            "After filtering out router jitter, there are still {} - {} = {} left.",
+            result.len(),
+            result.len() - result_ips.len(),
+            result_ips.len()
+        );
     }
 
     if !opts.enable_download {
@@ -53,14 +67,11 @@ fn main() {
         }
         return;
     }
-    let download_ips: Vec<IpAddr> = if opts.download_number == 0 {
-        result.iter().map(|x| x.ip).collect()
+
+    let result_ips: Vec<IpAddr> = if opts.download_number != 0 {
+        result_ips.into_iter().take(opts.download_number).collect()
     } else {
-        result
-            .iter()
-            .take(opts.download_number)
-            .map(|x| x.ip)
-            .collect()
+        result_ips
     };
 
     let domain: String = match utils::get_domain_from_url(opts.download_url.as_str()) {
@@ -73,7 +84,7 @@ fn main() {
 
     // download speed test
     let downloader: Downloader = Downloader::new(
-        &download_ips,
+        &result_ips,
         4,
         domain,
         Duration::from_secs(opts.download_timeout),
@@ -114,6 +125,19 @@ async fn run_scanner(ips: Vec<IpAddr>, opts: &Opts) -> Vec<Delay> {
 
     let mut result = scanner.run().await;
     result.sort();
+    result
+}
+
+async fn run_checker(ips: Vec<IpAddr>, opts: &Opts) -> Vec<IpAddr> {
+    let checker = CloudflareChecker::new(
+        ips,
+        10,
+        Duration::from_millis(opts.timeout),
+        80,
+        opts.number,
+    );
+
+    let result = checker.check_routes().await;
     result
 }
 

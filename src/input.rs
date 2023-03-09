@@ -63,6 +63,14 @@ pub struct Opts {
     #[structopt(long, default_value = "5")]
     pub download_timeout: u64,
 
+    /// Check if Cloudflare routes are in the same region.
+    #[structopt(short, long)]
+    pub check_reoutes: bool,
+
+    /// Check routes times
+    #[structopt(long,default_value = "5")]
+    pub check_times:u64,
+
     /// The files or CIDRs to process [default=ip.txt].
     /// Example: 'rustspeedtest -n 2500 -d 20 -- 192.168.1.1/24'.
     #[structopt(last = true)]
@@ -86,6 +94,8 @@ impl Default for Opts {
             avg_delay_lower: 0,
             download_url: "https://speed.cloudflare.com/__down?bytes=200000000".to_string(),
             download_timeout: 5,
+            check_reoutes:false,
+            check_times:10,
             args: vec![],
         }
     }

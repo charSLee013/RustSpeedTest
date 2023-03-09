@@ -243,9 +243,6 @@ impl std::fmt::Display for Delay {
 #[cfg(test)]
 mod test {
     use std::{net::IpAddr, num::NonZeroU8, str::FromStr, time::Duration};
-
-    use futures::executor::block_on;
-
     // use crate::scanner::sort_delays;
 
     use super::{Delay, Scanner};
@@ -275,18 +272,10 @@ mod test {
 
         let scanner = Scanner::new(addrs, 1000, Duration::from_millis(5000), 4, 443, 9999, 0);
 
-        let result = block_on(scanner.run());
-        assert!(!result.is_empty());
+        let rt = tokio::runtime::Builder::new_multi_thread().build().unwrap();
 
-        // display top 10
-        for delay in result.into_iter().take(10) {
-            println!(
-                "IP:{}\t consume:{} \t success: {}",
-                delay.ip.to_string(),
-                delay.consume.as_millis(),
-                delay.success
-            );
-        }
+        let result = rt.block_on(scanner.run());
+        assert!(!result.is_empty());
     }
 
     #[test]
