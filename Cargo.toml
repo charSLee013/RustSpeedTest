@@ -16,7 +16,7 @@ rand = "0.8.5"
 indicatif = "0.17.2"
 clap = "4.0.29"
 structopt = "0.3.20"
-reqwest = { version = "0.11.13", features = ["gzip", "stream","blocking"] }
+reqwest = { version = "0.11.13", features = ["gzip", "stream"] }
 url = "2.3.1"
 tokio = { version = "1.23.0", features = ["full"] }
 
@@ -25,6 +25,8 @@ tokio = { version = "1.23.0", features = ["full"] }
 lto = true
 panic = 'abort'
 opt-level = 'z'
+strip = true
+codegen-units = 1
 
 [profile.bench]
 debug = true

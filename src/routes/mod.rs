@@ -20,6 +20,7 @@ pub struct CloudflareChecker {
 
 impl CloudflareChecker {
     /// Create a new CloudflareChecker instance
+    #[inline]
     pub fn new(
         ips_to_check: Vec<IpAddr>,
         tries_per_ip: u64,
@@ -166,6 +167,7 @@ impl CloudflareChecker {
         result
     }
 
+    #[inline]
     async fn tcp_connect(address: String, request_timeout: Duration) -> io::Result<TcpStream> {
         let stream =
             tokio::time::timeout(
@@ -176,6 +178,7 @@ impl CloudflareChecker {
         Ok(stream)
     }
 
+    #[inline]
     async fn write_with_timeout(
         stream: &mut TcpStream,
         buf: &[u8],
@@ -185,6 +188,7 @@ impl CloudflareChecker {
         Ok(())
     }
 
+    #[inline]
     async fn read_with_timeout(
         stream: &mut TcpStream,
         buf: &mut [u8],

@@ -167,6 +167,8 @@ impl Scanner {
         })
     }
 
+
+    #[inline]
     async fn connect(
         timeout: Duration,
         socket: SocketAddr,

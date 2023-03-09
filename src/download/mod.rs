@@ -73,10 +73,12 @@ impl Downloader {
         self.handle_response(response, start_time, addr.ip()).await
     }
 
+    #[inline]
     fn create_url(&self) -> Result<Url, url::ParseError> {
         Url::parse(&self.url)
     }
 
+    #[inline]
     fn create_client(&self) -> ClientBuilder {
         reqwest::Client::builder()
             .no_proxy()
@@ -87,6 +89,7 @@ impl Downloader {
         // .build()
     }
 
+    #[inline]
     async fn make_request(
         &self,
         client: Client,
