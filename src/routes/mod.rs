@@ -280,7 +280,7 @@ pub struct CloudflareCheckResult {
     route_status: CheckRouteStatus, // Whether the route is consistent
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CheckRouteStatus {
     /// normal
     None,
@@ -304,7 +304,7 @@ mod tests {
         let check_result_v4 =
             CloudflareChecker::check_cloudflare_routes(ip_v4, 2, 80, Duration::from_secs(5)).await;
         assert_eq!(check_result_v4.ip_address, ip_v4);
-        assert_eq!(check_result_v4.is_route_consistent, true);
+        assert_eq!(check_result_v4.route_status,CheckRouteStatus::None);
     }
 
     #[tokio::test]
