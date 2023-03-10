@@ -1,4 +1,3 @@
-
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -77,12 +76,22 @@ impl CloudflareChecker {
 
         let mut iter_empty = false;
 
+        let mut empty: usize = 0;
+        let mut diff: usize = 0;
         // Handle the check results
         for _ in 0..total {
             if let Some(ip_status) = rx.recv().await {
-                if ip_status.is_route_consistent {
-                    pb.set_message(format!("Addr: {}", ip_status.ip_address));
-                    valid_ips.push(ip_status.ip_address);
+                match ip_status.route_status {
+                    CheckRouteStatus::None => {
+                        pb.set_message(format!("Addr: {}", ip_status.ip_address));
+                        valid_ips.push(ip_status.ip_address);
+                    }
+                    CheckRouteStatus::Diff => {
+                        diff += 1;
+                    }
+                    CheckRouteStatus::Empty => {
+                        empty += 1;
+                    }
                 }
             }
             pb.inc(1);
@@ -111,6 +120,15 @@ impl CloudflareChecker {
             }
         }
         pb.finish_with_message("finshed");
+
+        // summary all ip routes status
+        println!(
+            "vaild: {} \t empty: {} \t diff: {}",
+            valid_ips.len(),
+            empty,
+            diff
+        );
+
         valid_ips
     }
 
@@ -123,7 +141,7 @@ impl CloudflareChecker {
     ) -> CloudflareCheckResult {
         let mut result = CloudflareCheckResult {
             ip_address: ip_address,
-            is_route_consistent: false,
+            route_status: CheckRouteStatus::None,
         };
         let mut location_code = String::new();
         let mut count = 0;
@@ -141,6 +159,7 @@ impl CloudflareChecker {
         }
 
         if location_code.is_empty() {
+            result.route_status = CheckRouteStatus::Empty;
             // println!("{} cannot get location code", ip_address);
             return result;
         }
@@ -156,13 +175,10 @@ impl CloudflareChecker {
                     //     "{} has different location code by {} and {}",
                     //     ip_address, location_code, code
                     // );
+                    result.route_status = CheckRouteStatus::Diff;
                     return result;
                 }
             }
-        }
-
-        if !location_code.is_empty() {
-            result.is_route_consistent = true;
         }
         result
     }
@@ -260,8 +276,18 @@ impl CloudflareChecker {
 /// CloudflareCheckResult struct, used to represent the check result of an IP address routeed
 #[derive(Debug)]
 pub struct CloudflareCheckResult {
-    ip_address: IpAddr,        // IP address
-    is_route_consistent: bool, // Whether the route is consistent
+    ip_address: IpAddr,             // IP address
+    route_status: CheckRouteStatus, // Whether the route is consistent
+}
+
+#[derive(Debug)]
+pub enum CheckRouteStatus {
+    /// normal
+    None,
+    /// get not any location code
+    Empty,
+    /// get diff location code
+    Diff,
 }
 
 #[cfg(test)]
@@ -269,7 +295,7 @@ mod tests {
     use tokio::time;
 
     use super::*;
-    use std::net::{Ipv4Addr};
+    use std::net::Ipv4Addr;
 
     #[tokio::test]
     async fn test_check_cloudflare_routes_ipv4() {
