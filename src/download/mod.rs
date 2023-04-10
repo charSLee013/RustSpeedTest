@@ -15,17 +15,19 @@ pub struct Downloader {
     connect_timeout: Duration,
     port: u16,
     url: String,
+    min_available: usize, // 最小可用数
 }
 
 impl Downloader {
     pub fn new(
-        ips: &[IpAddr],
+        ips: Vec<IpAddr>,
         tries: u8,
         host: String,
         timeout: Duration,
         connect_timeout: Duration,
         port: u16,
         url: String,
+        min_available: usize,
     ) -> Self {
         Downloader {
             ips: ips.to_owned(),
@@ -35,6 +37,7 @@ impl Downloader {
             connect_timeout,
             port,
             url,
+            min_available,
         }
     }
 
@@ -45,6 +48,8 @@ impl Downloader {
             return speeds;
         }
 
+        let mut available_count:usize = 0; // 已可用数
+
         let socket_addrs = self.ips.iter().map(|ip| SocketAddr::new(*ip, self.port));
         let url = self
             .create_url()
@@ -54,6 +59,10 @@ impl Downloader {
             for _ in 1..=self.tries {
                 if let Ok(speed) = self.measure_download_speed(socket_addr, url.clone()).await {
                     speeds.push(speed);
+                    available_count += 1;
+                    if available_count >= self.min_available { // 判断是否已经满足“最小可用数”的要求
+                        return speeds;
+                    }
                     break;
                 }
             }
@@ -201,6 +210,7 @@ mod tests {
             connect_timeout: Duration::from_secs(5),
             port: 80,
             url: "https://www.example.com/test".to_string(),
+            min_available:1,
         };
 
         let url = downloader.create_url();

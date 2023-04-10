@@ -37,8 +37,8 @@ impl CloudflareChecker {
     }
 
     /// Check if the Cloudflare CDN IP's location code is consistent across multiple HTTP requests
-    pub async fn check_routes(&self) -> Vec<IpAddr> {
-        let mut valid_ips = Vec::new();
+    pub async fn check_routes(&self) -> Vec<CloudflareCheckResult> {
+        let mut valid_result = Vec::new();
         let (tx, mut rx) = mpsc::channel(self.batch_size);
         let total = self.ips_to_check.len();
         let mut ips_iter = self.ips_to_check.clone().into_iter();
@@ -84,7 +84,7 @@ impl CloudflareChecker {
                 match ip_status.route_status {
                     CheckRouteStatus::None => {
                         pb.set_message(format!("Addr: {}", ip_status.ip_address));
-                        valid_ips.push(ip_status.ip_address);
+                        valid_result.push(ip_status);
                     }
                     CheckRouteStatus::Diff => {
                         diff += 1;
@@ -124,12 +124,12 @@ impl CloudflareChecker {
         // summary all ip routes status
         println!(
             "vaild: {} \t empty: {} \t diff: {}",
-            valid_ips.len(),
+            valid_result.len(),
             empty,
             diff
         );
 
-        valid_ips
+        valid_result
     }
 
     /// Check the route of a specified IP address
@@ -142,6 +142,7 @@ impl CloudflareChecker {
         let mut result = CloudflareCheckResult {
             ip_address: ip_address,
             route_status: CheckRouteStatus::None,
+            location_code:None,
         };
         let mut location_code = String::new();
         let mut count = 0;
@@ -162,6 +163,8 @@ impl CloudflareChecker {
             result.route_status = CheckRouteStatus::Empty;
             // println!("{} cannot get location code", ip_address);
             return result;
+        } else {
+            result.location_code = Some(location_code.clone()); // 更新地区码
         }
 
         // Check the route information of the IP address again to ensure the accuracy of the result
@@ -276,9 +279,11 @@ impl CloudflareChecker {
 /// CloudflareCheckResult struct, used to represent the check result of an IP address routeed
 #[derive(Debug)]
 pub struct CloudflareCheckResult {
-    ip_address: IpAddr,             // IP address
-    route_status: CheckRouteStatus, // Whether the route is consistent
+    pub ip_address: IpAddr,             // IP address
+    pub route_status: CheckRouteStatus, // Whether the route is consistent
+    pub location_code: Option<String>, 
 }
+
 
 #[derive(Debug, PartialEq)]
 pub enum CheckRouteStatus {

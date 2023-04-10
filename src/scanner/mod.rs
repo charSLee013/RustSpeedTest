@@ -188,7 +188,7 @@ pub struct Delay {
     /// 平均延迟
     pub consume: Duration,
     /// 成功次数
-    pub success: i32,
+    pub success: u8,
 }
 
 impl Delay {

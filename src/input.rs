@@ -65,7 +65,7 @@ pub struct Opts {
 
     /// Check if Cloudflare routes are in the same region.
     #[structopt(short, long)]
-    pub check_reoutes: bool,
+    pub httping: bool,
 
     /// Check routes times
     #[structopt(long,default_value = "5")]
@@ -94,7 +94,7 @@ impl Default for Opts {
             avg_delay_lower: 0,
             download_url: "https://speed.cloudflare.com/__down?bytes=200000000".to_string(),
             download_timeout: 5,
-            check_reoutes:false,
+            httping:false,
             check_times:10,
             args: vec![],
         }
