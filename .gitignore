@@ -126,8 +126,9 @@ fabric.properties
 .vscode
 .vscode*
 
-# Other
+# Other script
 profiling.sh
+filter.sh
 
 
 # Generated 
