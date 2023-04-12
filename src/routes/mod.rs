@@ -1,5 +1,6 @@
-use std::net::IpAddr;
+use std::cmp::Ordering;
 use std::time::Duration;
+use std::{collections::HashMap, net::IpAddr};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{
@@ -87,9 +88,11 @@ impl CloudflareChecker {
                         valid_result.push(ip_status);
                     }
                     CheckRouteStatus::Diff => {
+                        valid_result.push(ip_status);
                         diff += 1;
                     }
                     CheckRouteStatus::Empty => {
+                        valid_result.push(ip_status);
                         empty += 1;
                     }
                 }
@@ -112,11 +115,9 @@ impl CloudflareChecker {
                     .await;
                     tx.send(check_result).await.unwrap();
                 });
-            } else {
-                if !iter_empty {
-                    println!("All task push in queue");
-                    iter_empty = true;
-                }
+            } else if !iter_empty {
+                println!("All task push in queue");
+                iter_empty = true;
             }
         }
         pb.finish_with_message("finshed");
@@ -140,9 +141,9 @@ impl CloudflareChecker {
         request_timeout: Duration,
     ) -> CloudflareCheckResult {
         let mut result = CloudflareCheckResult {
-            ip_address: ip_address,
+            ip_address,
             route_status: CheckRouteStatus::None,
-            location_code:None,
+            location_code: String::new(),
         };
         let mut location_code = String::new();
         let mut count = 0;
@@ -164,7 +165,7 @@ impl CloudflareChecker {
             // println!("{} cannot get location code", ip_address);
             return result;
         } else {
-            result.location_code = Some(location_code.clone()); // 更新地区码
+            result.location_code = location_code.clone(); // 更新地区码
         }
 
         // Check the route information of the IP address again to ensure the accuracy of the result
@@ -213,8 +214,7 @@ impl CloudflareChecker {
         buf: &mut [u8],
         timeout: Duration,
     ) -> io::Result<usize> {
-        let fut = tokio::time::timeout(timeout, async move { stream.read(buf).await }).await?;
-        fut
+        tokio::time::timeout(timeout, async move { stream.read(buf).await }).await?
     }
 
     /// Get the route information of a specified IP address
@@ -232,7 +232,7 @@ impl CloudflareChecker {
             }
         };
         // Write an HTTP GET request
-        if let Err(_) = CloudflareChecker::write_with_timeout(
+        if (CloudflareChecker::write_with_timeout(
             &mut stream,
             format!(
                 "GET / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
@@ -241,14 +241,13 @@ impl CloudflareChecker {
             .as_bytes(),
             request_timeout,
         )
-        .await
+        .await).is_err()
         {
             return None;
         }
         // Read the response from the stream into a buffer
         let mut buffer = [0; 1024];
-        if let Err(_) =
-            CloudflareChecker::read_with_timeout(&mut stream, &mut buffer, request_timeout).await
+        if (CloudflareChecker::read_with_timeout(&mut stream, &mut buffer, request_timeout).await).is_err()
         {
             return None;
         }
@@ -272,7 +271,7 @@ impl CloudflareChecker {
         // Get the last three letters of the CF-ray value as the location code
         let location_code = &cf_ray_line[cf_ray_line.len() - 3..];
         // Return the location code as a String
-        return Some(location_code.to_string());
+        Some(location_code.to_string())
     }
 }
 
@@ -281,9 +280,18 @@ impl CloudflareChecker {
 pub struct CloudflareCheckResult {
     pub ip_address: IpAddr,             // IP address
     pub route_status: CheckRouteStatus, // Whether the route is consistent
-    pub location_code: Option<String>, 
+    pub location_code: String,
 }
 
+impl CloudflareCheckResult {
+    pub fn to_map(routes: Vec<CloudflareCheckResult>) -> HashMap<IpAddr, CloudflareCheckResult> {
+        let mut map = HashMap::new();
+        for route in routes {
+            map.insert(route.ip_address, route);
+        }
+        map
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum CheckRouteStatus {
@@ -294,6 +302,39 @@ pub enum CheckRouteStatus {
     /// get diff location code
     Diff,
 }
+
+
+impl Ord for CloudflareCheckResult {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.route_status == CheckRouteStatus::None {
+            return Ordering::Less;
+        }
+
+        if other.route_status == CheckRouteStatus::None{
+            return  Ordering::Greater;
+        }
+
+        if self.route_status == CheckRouteStatus::Diff || self.route_status == CheckRouteStatus::Empty{
+            return Ordering::Less;
+        }
+
+        return Ordering::Greater;
+    }
+}
+
+impl PartialOrd for CloudflareCheckResult {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for CloudflareCheckResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.ip_address == other.ip_address && self.route_status == other.route_status && self.location_code == other.location_code
+    }
+}
+
+impl Eq for CloudflareCheckResult {}
 
 #[cfg(test)]
 mod tests {
@@ -309,7 +350,7 @@ mod tests {
         let check_result_v4 =
             CloudflareChecker::check_cloudflare_routes(ip_v4, 2, 80, Duration::from_secs(5)).await;
         assert_eq!(check_result_v4.ip_address, ip_v4);
-        assert_eq!(check_result_v4.route_status,CheckRouteStatus::None);
+        assert_eq!(check_result_v4.route_status, CheckRouteStatus::None);
     }
 
     #[tokio::test]

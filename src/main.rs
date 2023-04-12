@@ -1,13 +1,13 @@
 use rand::seq::index::sample;
 use std::collections::HashSet;
 use std::net::IpAddr;
+use std::time::Duration;
 
 use download::{Downloader, Speed};
 use routes::{CloudflareCheckResult, CloudflareChecker};
 
 use input::Opts;
 use scanner::{Delay, Scanner};
-use std::time::Duration;
 
 mod download;
 mod input;
@@ -35,14 +35,6 @@ fn main() {
         .build()
         .unwrap();
 
-    // let result = rt.block_on(run_scanner(ips, &opts));
-
-    // let mut result = if opts.httping{
-    //     rt.block_on(run_checker(ips, &opts));
-    // } else {
-    //     rt.block_on(run_scanner(ips, &opts));
-    // };
-
     // tcp 测试结果
     let mut tcping_result: Option<Vec<Delay>> = None;
     // http cf-ray 结果
@@ -52,16 +44,16 @@ fn main() {
     // 测速结果
     let mut speedtest_result: Option<Vec<Speed>> = None;
 
-    // tcp 和 http 测试二选一
-    if opts.httping {
+    // tcp 和 cfhttp 测试二选一
+    if opts.cfhttping {
         httping_result = Some(rt.block_on(run_checker(ips, &opts)));
-        if let Some(httping_result) = httping_result {
-            valis_ips = httping_result.iter().map(|r| r.ip_address).collect();
+        if let Some(ref record) = httping_result {
+            valis_ips = record.iter().map(|r| r.ip_address).collect();
         }
     } else {
         tcping_result = Some(rt.block_on(run_scanner(ips, &opts)));
-        if let Some(tcping_result) = tcping_result{
-            valis_ips = tcping_result.iter().map(|r| r.ip).collect();
+        if let Some(ref record) = tcping_result {
+            valis_ips = record.iter().map(|r| r.ip).collect();
         }
     }
 
@@ -74,210 +66,166 @@ fn main() {
 
     // 简单显示结果
     if opts.display != 0 {
-        display_results(
-            &valis_ips,
-            &tcping_result,
-            &httping_result,
-            &speedtest_result,
-            &opts,
-        );
+        display_results(&tcping_result, &httping_result, &speedtest_result, &opts);
     }
 
     // 写入到csv文件中
-    // match utils::write_to_csv(&opts.output, result, Some(speedtest_result)) {
-    //     Ok(_) => {}
-    //     Err(error) => {
-    //         println!(
-    //             "Warn: Cannot write result to {}\nError message:{}",
-    //             &opts.output, error,
-    //         );
-    //     }
-    // }
+    match utils::write_to_csv(
+        &valis_ips,
+        tcping_result,
+        httping_result,
+        speedtest_result,
+        &opts,
+    ) {
+        Ok(_) => {}
+        Err(error) => {
+            println!(
+                "Warn: Cannot write result to {}\nError message:{}",
+                &opts.output, error,
+            );
+        }
+    }
 }
 
+// fn display_results(
+//     tcping_result: &Option<Vec<Delay>>,
+//     httping_result: &Option<Vec<CloudflareCheckResult>>,
+//     speedtest_result: &Option<Vec<Speed>>,
+//     opts: &Opts,
+// ) {
+//     let mut headers: Vec<&str> = Vec::new(); // 标题
+//     let mut rows = Vec::new(); // 行数据
+//                                // 优先显示下载测速
+//     if (speedtest_result.is_some()) {
+//         let speed_result = speedtest_result.unwrap();
+//         headers = vec!["IP 地址", "下载速度"];
+//         for record in speed_result.iter().take(opts.display) {
+//             rows.push(format!(
+//                 "{},{:.2}MB/s",
+//                 record.ip.to_string(),
+//                 record.total_download as f64 / 1024.0 / 1024.0 / record.consume.as_secs_f64()
+//             ))
+//         }
+//         return;
+//     }
+
+//     if tcping_result.is_some() {
+//         let tcp_result = tcping_result.unwrap();
+//         headers = vec!["IP 地址", "丢包率", "延时（ms）"];
+//         for record in tcp_result.iter().take(opts.display) {
+//             let loss_rate = 1.0 - (record.success as f64 / opts.time as f64);
+//             rows.push(format!(
+//                 "{},{:.1}%,{:.2}ms",
+//                 record.ip.to_string(),
+//                 loss_rate,
+//                 record.consume.as_millis(),
+//             ))
+//         }
+//     }
+
+//     if httping_result.is_some(){
+//         let http_result = httping_result.unwrap();
+//         headers = vec!["IP 地址","状态码","区域"];
+//         for record in http_result.iter().take(opts.display){
+//             rows.push(format!(
+//                 "{},{},{}",
+//                 record.ip_address.to_string(),
+//                 match record.route_status {
+//                     routes::CheckRouteStatus::None => "Normal",
+//                     routes::CheckRouteStatus::Diff => "Diff",
+//                     routes::CheckRouteStatus::Empty => "Empty",
+//                 },
+//                 record.location_code,
+//             ));
+//         }
+//     }
+//         // 打印表格
+//         print_table(headers, rows);
+// }
+
+
 fn display_results(
-    valis_ips: &[IpAddr],
     tcping_result: &Option<Vec<Delay>>,
     httping_result: &Option<Vec<CloudflareCheckResult>>,
     speedtest_result: &Option<Vec<Speed>>,
     opts: &Opts,
 ) {
-    if let Some(tcping_result) = tcping_result {
-        println!("TCP 扫描结果：");
-        println!("{:<20} {:<20} {:<10}", "IP", "平均延迟", "丢包率");
-        for result in tcping_result.iter().take(opts.display) {
-            let loss_rate = 1.0 - (result.success as f64 / opts.time as f64);
+    if let Some(ref results) = speedtest_result {
+        println!("Download speed test results:");
+        println!("{:<16} {:<12}", "IP Address", "Download Speed (MB/s)");
+        for record in results.iter().take(opts.display) {
+            let download_speed = record.total_download as f64 / 1024.0 / 1024.0 / record.consume.as_secs_f32() as f64;
+            println!("{:<16} {:<12.2}", record.ip, download_speed);
+        }
+    } else if let Some(ref results) = tcping_result {
+        println!("TCP scan results:");
+        println!("{:<16} {:<9} {:<9} {:<8} {:<14}", "IP Address", "Sent", "Received", "Loss", "Avg Delay (ms)");
+        for record in results.iter().take(opts.display) {
+            let delay_ms = record.consume.as_millis();
+            let loss_percent = 100.0 * (1.0 - record.success as f64 / opts.time as f64);
             println!(
-                "{:<20} {:<20.2}ms {:<10.1}%",
-                result.ip,
-                result.consume.as_millis(),
-                loss_rate * 100.0,
+                "{:<16} {:<9} {:<9} {:<8} {:<14}",
+                record.ip, opts.time, record.success, format!("{:.1}%", loss_percent), delay_ms
             );
         }
-        println!();
-    }
-
-    if let Some(httping_result) = httping_result {
-        println!("HTTP 路由检查结果：");
-        println!("{:<20} {:<20} {:<10}", "IP", "状态码", "区域");
-        for result in httping_result.iter().take(opts.display) {
+    } else if let Some(ref results) = httping_result {
+        println!("HTTP routing check results:");
+        println!("{:<16} {:<9} {:<9} {:<8}", "IP Address", "Status", "Location", "");
+        for record in results.iter().take(opts.display) {
+            let status_code = match record.route_status {
+                routes::CheckRouteStatus::None => 200,
+                routes::CheckRouteStatus::Diff => 404,
+                routes::CheckRouteStatus::Empty => 500,
+            };
             println!(
-                "{:<20} {:<20} {:<10}",
-                result.ip_address,
-                match result.route_status {
-                    routes::CheckRouteStatus::None => {
-                        "Normal"
-                    }
-                    routes::CheckRouteStatus::Diff => {
-                        "Diff"
-                    }
-                    routes::CheckRouteStatus::Empty => {
-                        "Empty"
-                    }
-                },
-                result.location_code.as_deref().unwrap_or("N/A"),
+                "{:<16} {:<9} {:<9} {:<8}",
+                record.ip_address, status_code, record.location_code, ""
             );
         }
-        println!();
-    }
-
-    if let Some(speedtest_result) = speedtest_result {
-        println!("下载测速结果：");
-        println!("{:<20} {:<20}", "IP", "平均下载速度");
-        for result in speedtest_result.iter().take(opts.display) {
-            println!(
-                "{:<20} {:<20.2}MB/s",
-                result.ip,
-                result.total_download as f64 / 1024.0 / 1024.0 / result.consume.as_secs_f64(),
-            );
-        }
-        println!();
-    }
-
-    if !valis_ips.is_empty() {
-        let mut headers = Vec::new(); // 定义一个存放表头信息的数组
-        headers.push("IP".to_owned()); // 添加 IP 表头
-
-        // 如果已经对 IP 进行了 TCP 扫描
-        if let Some(tcping_result) = tcping_result {
-            headers.push("Loss".to_owned()); // 添加丢包率表头
-            headers.push("Delay".to_owned()); // 添加延时表头
-        }
-
-        // 如果已经对 IP 进行了 HTTP 路由检查
-        if let Some(httping_result) = httping_result {
-            headers.push("Status".to_owned()); // 添加状态码表头
-            headers.push("Area".to_owned()); // 添加区域表头
-        }
-
-        // 如果已经对 IP 进行了下载测速
-        if let Some(speedtest_result) = speedtest_result {
-            headers.push("Speed".to_owned()); // 添加下载速度表头
-        }
-
-        let mut rows = Vec::new(); // 定义一个存放表格数据的数组
-
-        // 遍历 IP 地址
-        for ip in valis_ips.iter().take(opts.display) {
-            let mut row = Vec::new(); // 定义一行表格数据
-
-            row.push(ip.to_string()); // 添加 IP 地址
-
-            // 如果已经对 IP 进行了 TCP 扫描
-            if let Some(tcping_result) = tcping_result {
-                // 查找 TCP 测试结果中与当前 IP 相同的记录
-                if let Some(record) = tcping_result.iter().find(|r| r.ip == *ip) {
-                    let loss_rate = 1.0 - (record.success as f64 / opts.time as f64);
-                    row.push(format!("{:.1}%", loss_rate)); // 添加丢包率
-                    row.push(format!("{:.2}ms", record.consume.as_millis())); // 添加延时
-                } else {
-                    row.push("-".to_owned()); // 对应的 TCP 测试结果不存在，使用占位符代替
-                    row.push("-".to_owned());
-                }
-            }
-
-            // 如果已经对 IP 进行了 HTTP 路由检查
-            if let Some(httping_result) = httping_result {
-                // 查找 HTTP 路由检查结果中与当前 IP 相同的记录
-                if let Some(record) = httping_result.iter().find(|r| r.ip_address == *ip) {
-                    row.push(match record.route_status {
-                        routes::CheckRouteStatus::None => (&"Normal").to_string(),
-                        routes::CheckRouteStatus::Diff => (&"Diff").to_string(),
-                        routes::CheckRouteStatus::Empty => (&"Empty").to_string(),
-                    }); // 添加状态码
-                    row.push(record.location_code.clone().unwrap_or("None".to_string()));
-                // 添加区域信息
-                } else {
-                    row.push("-".to_owned()); // 对应的 HTTP 路由检查结果不存在，使用占位符代替
-                    row.push("-".to_owned());
-                }
-            }
-
-            // 如果已经对 IP 进行了下载测速
-            if let Some(speedtest_result) = speedtest_result {
-                // 查找下载测速结果中与当前 IP 相同的记录
-                if let Some(record) = speedtest_result.iter().find(|r| r.ip == *ip) {
-                    row.push(format!(
-                        "{:.2}MB/s",
-                        record.total_download as f64
-                            / 1024.0
-                            / 1024.0
-                            / record.consume.as_secs_f64()
-                    )); // 添加平均下载速度
-                } else {
-                    row.push("-".to_owned()); // 对应的下载测速结果不存在，使用占位符代替
-                }
-            }
-
-            rows.push(row); // 将一行数据添加到表格数据中
-        }
-
-        // 打印表格
-        print_table(headers, rows);
     }
 }
 
-pub fn print_table(headers: Vec<String>, rows: Vec<Vec<String>>) {
-    let num_columns = headers.len();
-    let max_widths: Vec<_> = (0..num_columns)
-        .map(|col_index| {
-            let mut max_width = headers[col_index].len();
-            for row in &rows {
-                if row[col_index].len() > max_width {
-                    max_width = row[col_index].len();
-                }
-            }
-            max_width
-        })
-        .collect();
+// pub fn print_table(headers: Vec<String>, rows: Vec<String>) {
+//     let num_columns = headers.len();
+//     let max_widths: Vec<_> = (0..num_columns)
+//         .map(|col_index| {
+//             let mut max_width = headers[col_index].len();
+//             for row in &rows {
+//                 if row[col_index].len() > max_width {
+//                     max_width = row[col_index].len();
+//                 }
+//             }
+//             max_width
+//         })
+//         .collect();
 
-    let divider: String = max_widths
-        .iter()
-        .map(|max_width| "-".repeat(max_width + 2))
-        .collect::<Vec<_>>()
-        .join("+");
+//     let divider: String = max_widths
+//         .iter()
+//         .map(|max_width| "-".repeat(max_width + 2))
+//         .collect::<Vec<_>>()
+//         .join("+");
 
-    let header_str: String = headers
-        .iter()
-        .enumerate()
-        .map(|(i, header)| format!("{0:<1$} | ", header, max_widths[i]))
-        .collect();
+//     let header_str: String = headers
+//         .iter()
+//         .enumerate()
+//         .map(|(i, header)| format!("{0:<1$} | ", header, max_widths[i]))
+//         .collect();
 
-    println!("{}\n| {}|", divider, header_str);
+//     println!("{}\n| {}|", divider, header_str);
 
-    for row in rows {
-        let row_str: String = row
-            .into_iter()
-            .enumerate()
-            .map(|(i, cell)| format!("{0:<1$} | ", cell, max_widths[i]))
-            .collect();
-        println!("{}\n| {}|", divider, row_str);
-    }
+//     for row in rows {
+//         let row_str: String = row
+//             .into_iter()
+//             .enumerate()
+//             .map(|(i, cell)| format!("{0:<1$} | ", cell, max_widths[i]))
+//             .collect();
+//         println!("{}\n| {}|", divider, row_str);
+//     }
 
-    println!("{}", divider);
-}
+//     println!("{}", divider);
+// }
 
-async fn run_downloader(ips: &Vec<IpAddr>, opts: &Opts) -> Vec<Speed> {
+async fn run_downloader(ips: &[IpAddr], opts: &Opts) -> Vec<Speed> {
     let domain: String = match utils::get_domain_from_url(opts.download_url.as_str()) {
         Ok(h) => h,
         Err(e) => {
@@ -288,7 +236,7 @@ async fn run_downloader(ips: &Vec<IpAddr>, opts: &Opts) -> Vec<Speed> {
 
     // download speed test
     let downloader: Downloader = Downloader::new(
-        ips.clone(),
+        ips.to_owned(),
         4,
         domain,
         Duration::from_secs(opts.download_timeout),
@@ -327,8 +275,8 @@ async fn run_checker(ips: Vec<IpAddr>, opts: &Opts) -> Vec<CloudflareCheckResult
         80,
         opts.number,
     );
-
-    let result = checker.check_routes().await;
+    let mut result = checker.check_routes().await;
+    result.sort();
     result
 }
 
@@ -455,15 +403,16 @@ mod test {
         }
 
         // download speed test
+        let len = speed_test_ips.len();
         let downloader: Downloader = Downloader::new(
-            &speed_test_ips,
+            speed_test_ips,
             4,
             "speed.cloudflare.com".to_string(),
             Duration::from_secs(10),
             Duration::from_millis(2000),
             443,
             "https://speed.cloudflare.com/__down?bytes=2000000000".to_string(),
-            speed_test_ips.len(),
+            len,
         );
         let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -481,15 +430,16 @@ mod test {
             .collect();
 
         // download speed test
+        let len = speed_test_ips.len();
         let downloader: Downloader = Downloader::new(
-            &speed_test_ips,
+            speed_test_ips,
             4,
             "speed.cloudflare.com".to_string(),
             Duration::from_secs(30),
             Duration::from_millis(5000),
             443,
             "https://speed.cloudflare.com/__down?bytes=2000000000".to_string(),
-            speed_test_ips.len(),
+            len,
         );
         let rt = tokio::runtime::Runtime::new().unwrap();
         for r in rt.block_on(downloader.run()).iter() {

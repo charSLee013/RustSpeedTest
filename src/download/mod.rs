@@ -4,7 +4,7 @@ use std::{
     fmt::{self},
     io::{Error, ErrorKind},
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::{Duration, Instant}, collections::HashMap,
 };
 
 pub struct Downloader {
@@ -30,7 +30,7 @@ impl Downloader {
         min_available: usize,
     ) -> Self {
         Downloader {
-            ips: ips.to_owned(),
+            ips,
             tries,
             host,
             timeout,
@@ -150,10 +150,21 @@ impl Downloader {
     }
 }
 
+#[derive(Debug)]
 pub struct Speed {
     pub ip: IpAddr,
     pub total_download: usize,
     pub consume: Duration,
+}
+
+impl Speed {
+    pub fn to_map(speeds: Vec<Speed>) -> HashMap<IpAddr, Speed> {
+        let mut map = HashMap::new();
+        for speed in speeds {
+            map.insert(speed.ip, speed);
+        }
+        map
+    }
 }
 
 impl Ord for Speed {

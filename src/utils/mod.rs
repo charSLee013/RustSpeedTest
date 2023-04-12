@@ -1,4 +1,5 @@
 use cidr_utils::cidr::IpCidr;
+
 use std::error::Error;
 
 use std::fs;
@@ -6,6 +7,8 @@ use std::io::BufRead;
 use std::{io, net::IpAddr};
 
 use crate::download::Speed;
+use crate::input::Opts;
+use crate::routes::{CloudflareCheckResult, self};
 use crate::scanner::Delay;
 
 /// 根据字符串解析成ip 地址
@@ -22,58 +25,94 @@ pub fn parse_addresses(ips_str: &str) -> Vec<IpAddr> {
 }
 
 pub fn write_to_csv(
-    filename: &str,
-    delays: Vec<Delay>,
-    speeds: Option<Vec<Speed>>,
+    valis_ips: &[IpAddr],
+    tcping_result: Option<Vec<Delay>>,
+    httping_result: Option<Vec<CloudflareCheckResult>>,
+    speedtest_result: Option<Vec<Speed>>,
+    opts: &Opts,
 ) -> Result<(), Box<dyn Error>> {
     let mut csv = String::new();
-    let titel = "IP,Delay,Success,Speedtest\n".to_string();
+    let mut titel = String::with_capacity(200);
+    titel.push_str("IP");
+
+    // tcp 测速标题
+    if tcping_result.is_some() {
+        titel.push_str(",Loss,Delay(ms)");
+    }
+    if httping_result.is_some() {
+        titel.push_str(",Status,Area");
+    }
+
+    if speedtest_result.is_some() {
+        titel.push_str(",Speed(MB/s)");
+    }
+    titel.push('\n');
 
     // add title
     csv.push_str(&titel);
 
-    if let Some(speeds) = speeds {
-        if !speeds.is_empty() {
-            let map = Delay::to_map(delays);
-            for speed in speeds {
-                let delay = map.get(&speed.ip).unwrap();
-                csv.push_str(&format!(
-                    "{},{},{},{}\n",
-                    speed.ip,
-                    delay.consume.as_millis(),
-                    delay.success,
-                    if speed.consume.as_secs() != 0 {
-                        super::utils::human_readable_size(
-                            (speed.total_download / speed.consume.as_secs() as usize) as f64,
-                        )
-                    } else {
-                        "0".to_string()
-                    }
-                ))
+    let tcping_map = if tcping_result.is_some(){
+        Some(Delay::to_map(tcping_result.unwrap_or(vec![])))
+    } else {
+        None
+    };
+
+    let httping_map = if httping_result.is_some(){
+        Some(CloudflareCheckResult::to_map(httping_result.unwrap_or(vec![])))
+    } else {
+        None
+    };
+
+    let speed_map = if speedtest_result.is_some(){
+        Some(Speed::to_map(speedtest_result.unwrap_or(vec![])))
+    } else {
+        None
+    };
+
+    // push data to csv
+    for ip in valis_ips.iter(){
+        let mut line = String::with_capacity(1024);
+        line.push_str(&ip.to_string());
+
+        // push tcp result
+        if let Some(ref record) = tcping_map{
+            if record.contains_key(ip){
+                let value = record.get(ip).unwrap();
+                let loss_rate = 1.0 - (value.success as f64 / opts.time as f64);
+                line.push_str(&format!(",{:.1},{:.2}", loss_rate,value.consume.as_millis()));
             }
-        } else {
-            // If all speed tests fail
-            for delay in delays {
-                csv.push_str(&format!(
-                    "{},{},{},0\n",
-                    delay.ip,
-                    delay.consume.as_millis(),
-                    delay.success
+        }
+
+        // push http result
+        if let Some(ref recrod) = httping_map{
+            if recrod.contains_key(ip){
+                let value = recrod.get(ip).unwrap();
+                line.push_str(match value.route_status {
+                    routes::CheckRouteStatus::None => ",Normal,",
+                    routes::CheckRouteStatus::Diff => ",Diff,",
+                    routes::CheckRouteStatus::Empty => ",Empty,",
+                });
+                line.push_str(&value.location_code.clone());
+            }
+        }
+
+        if let Some(ref record) = speed_map{
+            if record.contains_key(ip){
+                let value = record.get(ip).unwrap();
+                line.push_str(&format!(
+                    ",{:.2}",
+                    value.total_download as f64
+                        / 1024.0
+                        / 1024.0
+                        / value.consume.as_secs_f64()
                 ));
             }
         }
-    } else {
-        for delay in delays {
-            csv.push_str(&format!(
-                "{},{},{},0\n",
-                delay.ip,
-                delay.consume.as_millis(),
-                delay.success
-            ));
-        }
+        line.push('\n');
+        csv.push_str(&line);
     }
 
-    fs::write(filename, csv)?;
+    fs::write(&opts.output, csv)?;
     Ok(())
 }
 
