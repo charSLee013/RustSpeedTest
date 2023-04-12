@@ -8,7 +8,7 @@ use std::{io, net::IpAddr};
 
 use crate::download::Speed;
 use crate::input::Opts;
-use crate::routes::{CloudflareCheckResult, self};
+use crate::routes::{CFCDNCheckResult, self};
 use crate::scanner::Delay;
 
 /// 根据字符串解析成ip 地址
@@ -27,7 +27,7 @@ pub fn parse_addresses(ips_str: &str) -> Vec<IpAddr> {
 pub fn write_to_csv(
     valis_ips: &[IpAddr],
     tcping_result: Option<Vec<Delay>>,
-    httping_result: Option<Vec<CloudflareCheckResult>>,
+    httping_result: Option<Vec<CFCDNCheckResult>>,
     speedtest_result: Option<Vec<Speed>>,
     opts: &Opts,
 ) -> Result<(), Box<dyn Error>> {
@@ -58,7 +58,7 @@ pub fn write_to_csv(
     };
 
     let httping_map = if httping_result.is_some(){
-        Some(CloudflareCheckResult::to_map(httping_result.unwrap_or(vec![])))
+        Some(CFCDNCheckResult::to_map(httping_result.unwrap_or(vec![])))
     } else {
         None
     };
@@ -79,7 +79,7 @@ pub fn write_to_csv(
             if record.contains_key(ip){
                 let value = record.get(ip).unwrap();
                 let loss_rate = 1.0 - (value.success as f64 / opts.time as f64);
-                line.push_str(&format!(",{:.1},{:.2}", loss_rate,value.consume.as_millis()));
+                line.push_str(&format!(",{:.1},{:.2}", loss_rate,value.average_delay.as_millis()));
             }
         }
 
@@ -88,9 +88,9 @@ pub fn write_to_csv(
             if recrod.contains_key(ip){
                 let value = recrod.get(ip).unwrap();
                 line.push_str(match value.route_status {
-                    routes::CheckRouteStatus::None => ",Normal,",
-                    routes::CheckRouteStatus::Diff => ",Diff,",
-                    routes::CheckRouteStatus::Empty => ",Empty,",
+                    routes::RouteStatus::Normal => ",Normal,",
+                    routes::RouteStatus::DiffLocation => ",Diff,",
+                    routes::RouteStatus::NoLocation => ",Empty,",
                 });
                 line.push_str(&value.location_code.clone());
             }

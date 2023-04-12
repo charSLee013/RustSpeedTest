@@ -4,7 +4,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use download::{Downloader, Speed};
-use routes::{CloudflareCheckResult, CloudflareChecker};
+use routes::{CFCDNCheckResult, CloudflareChecker};
 
 use input::Opts;
 use scanner::{Delay, Scanner};
@@ -38,7 +38,7 @@ fn main() {
     // tcp 测试结果
     let mut tcping_result: Option<Vec<Delay>> = None;
     // http cf-ray 结果
-    let mut httping_result: Option<Vec<CloudflareCheckResult>> = None;
+    let mut httping_result: Option<Vec<CFCDNCheckResult>> = None;
     // 可用IP地址集合
     let mut valis_ips: Vec<IpAddr> = Vec::new();
     // 测速结果
@@ -48,7 +48,7 @@ fn main() {
     if opts.cfhttping {
         httping_result = Some(rt.block_on(run_checker(ips, &opts)));
         if let Some(ref record) = httping_result {
-            valis_ips = record.iter().map(|r| r.ip_address).collect();
+            valis_ips = record.iter().map(|r| r.ip).collect();
         }
     } else {
         tcping_result = Some(rt.block_on(run_scanner(ips, &opts)));
@@ -146,7 +146,7 @@ fn main() {
 
 fn display_results(
     tcping_result: &Option<Vec<Delay>>,
-    httping_result: &Option<Vec<CloudflareCheckResult>>,
+    httping_result: &Option<Vec<CFCDNCheckResult>>,
     speedtest_result: &Option<Vec<Speed>>,
     opts: &Opts,
 ) {
@@ -161,7 +161,7 @@ fn display_results(
         println!("TCP scan results:");
         println!("{:<16} {:<9} {:<9} {:<8} {:<14}", "IP Address", "Sent", "Received", "Loss", "Avg Delay (ms)");
         for record in results.iter().take(opts.display) {
-            let delay_ms = record.consume.as_millis();
+            let delay_ms = record.average_delay.as_millis();
             let loss_percent = 100.0 * (1.0 - record.success as f64 / opts.time as f64);
             println!(
                 "{:<16} {:<9} {:<9} {:<8} {:<14}",
@@ -173,13 +173,13 @@ fn display_results(
         println!("{:<16} {:<9} {:<9} {:<8}", "IP Address", "Status", "Location", "");
         for record in results.iter().take(opts.display) {
             let status_code = match record.route_status {
-                routes::CheckRouteStatus::None => 200,
-                routes::CheckRouteStatus::Diff => 404,
-                routes::CheckRouteStatus::Empty => 500,
+                routes::RouteStatus::Normal => 200,
+                routes::RouteStatus::DiffLocation => 404,
+                routes::RouteStatus::NoLocation => 500,
             };
             println!(
                 "{:<16} {:<9} {:<9} {:<8}",
-                record.ip_address, status_code, record.location_code, ""
+                record.ip, status_code, record.location_code, ""
             );
         }
     }
@@ -267,7 +267,7 @@ async fn run_scanner(ips: Vec<IpAddr>, opts: &Opts) -> Vec<Delay> {
     result
 }
 
-async fn run_checker(ips: Vec<IpAddr>, opts: &Opts) -> Vec<CloudflareCheckResult> {
+async fn run_checker(ips: Vec<IpAddr>, opts: &Opts) -> Vec<CFCDNCheckResult> {
     let checker = CloudflareChecker::new(
         ips,
         10,

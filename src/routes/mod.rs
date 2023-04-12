@@ -11,7 +11,7 @@ use tokio::{
 
 /// Checker struct, used to check the Cloudflare CDN IP routes
 pub struct CloudflareChecker {
-    ips_to_check: Vec<IpAddr>, // List of IP addresses to check
+    ips: Vec<IpAddr>, // List of IP addresses to check
     tries_per_ip: u64,         // Number of times to check each IP address
     request_timeout: Duration, // HTTP request timeout
     request_port: u16,         // HTTP request port
@@ -29,7 +29,7 @@ impl CloudflareChecker {
         batch_size: usize,
     ) -> Self {
         CloudflareChecker {
-            ips_to_check,
+            ips: ips_to_check,
             tries_per_ip,
             request_timeout,
             request_port,
@@ -38,11 +38,11 @@ impl CloudflareChecker {
     }
 
     /// Check if the Cloudflare CDN IP's location code is consistent across multiple HTTP requests
-    pub async fn check_routes(&self) -> Vec<CloudflareCheckResult> {
+    pub async fn check_routes(&self) -> Vec<CFCDNCheckResult> {
         let mut valid_result = Vec::new();
         let (tx, mut rx) = mpsc::channel(self.batch_size);
-        let total = self.ips_to_check.len();
-        let mut ips_iter = self.ips_to_check.clone().into_iter();
+        let total = self.ips.len();
+        let mut ips_iter = self.ips.clone().into_iter();
 
         // process bar
         let total = total;
@@ -75,23 +75,21 @@ impl CloudflareChecker {
             });
         }
 
-        let mut iter_empty = false;
-
         let mut empty: usize = 0;
         let mut diff: usize = 0;
         // Handle the check results
         for _ in 0..total {
             if let Some(ip_status) = rx.recv().await {
                 match ip_status.route_status {
-                    CheckRouteStatus::None => {
-                        pb.set_message(format!("Addr: {}", ip_status.ip_address));
+                    RouteStatus::Normal => {
+                        pb.set_message(format!("Addr: {}", ip_status.ip));
                         valid_result.push(ip_status);
                     }
-                    CheckRouteStatus::Diff => {
+                    RouteStatus::DiffLocation => {
                         valid_result.push(ip_status);
                         diff += 1;
                     }
-                    CheckRouteStatus::Empty => {
+                    RouteStatus::NoLocation => {
                         valid_result.push(ip_status);
                         empty += 1;
                     }
@@ -115,10 +113,7 @@ impl CloudflareChecker {
                     .await;
                     tx.send(check_result).await.unwrap();
                 });
-            } else if !iter_empty {
-                println!("All task push in queue");
-                iter_empty = true;
-            }
+            } 
         }
         pb.finish_with_message("finshed");
 
@@ -139,10 +134,10 @@ impl CloudflareChecker {
         tries_per_ip: u64,
         request_port: u16,
         request_timeout: Duration,
-    ) -> CloudflareCheckResult {
-        let mut result = CloudflareCheckResult {
-            ip_address,
-            route_status: CheckRouteStatus::None,
+    ) -> CFCDNCheckResult {
+        let mut result = CFCDNCheckResult {
+            ip: ip_address,
+            route_status: RouteStatus::Normal,
             location_code: String::new(),
         };
         let mut location_code = String::new();
@@ -161,7 +156,7 @@ impl CloudflareChecker {
         }
 
         if location_code.is_empty() {
-            result.route_status = CheckRouteStatus::Empty;
+            result.route_status = RouteStatus::NoLocation;
             // println!("{} cannot get location code", ip_address);
             return result;
         } else {
@@ -179,7 +174,7 @@ impl CloudflareChecker {
                     //     "{} has different location code by {} and {}",
                     //     ip_address, location_code, code
                     // );
-                    result.route_status = CheckRouteStatus::Diff;
+                    result.route_status = RouteStatus::DiffLocation;
                     return result;
                 }
             }
@@ -277,44 +272,44 @@ impl CloudflareChecker {
 
 /// CloudflareCheckResult struct, used to represent the check result of an IP address routeed
 #[derive(Debug)]
-pub struct CloudflareCheckResult {
-    pub ip_address: IpAddr,             // IP address
-    pub route_status: CheckRouteStatus, // Whether the route is consistent
+pub struct CFCDNCheckResult {
+    pub ip: IpAddr,             // IP address
+    pub route_status: RouteStatus, // Whether the route is consistent
     pub location_code: String,
 }
 
-impl CloudflareCheckResult {
-    pub fn to_map(routes: Vec<CloudflareCheckResult>) -> HashMap<IpAddr, CloudflareCheckResult> {
+impl CFCDNCheckResult {
+    pub fn to_map(routes: Vec<CFCDNCheckResult>) -> HashMap<IpAddr, CFCDNCheckResult> {
         let mut map = HashMap::new();
         for route in routes {
-            map.insert(route.ip_address, route);
+            map.insert(route.ip, route);
         }
         map
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum CheckRouteStatus {
+pub enum RouteStatus {
     /// normal
-    None,
+    Normal,
     /// get not any location code
-    Empty,
+    NoLocation,
     /// get diff location code
-    Diff,
+    DiffLocation,
 }
 
 
-impl Ord for CloudflareCheckResult {
+impl Ord for CFCDNCheckResult {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.route_status == CheckRouteStatus::None {
+        if self.route_status == RouteStatus::Normal {
             return Ordering::Less;
         }
 
-        if other.route_status == CheckRouteStatus::None{
+        if other.route_status == RouteStatus::Normal{
             return  Ordering::Greater;
         }
 
-        if self.route_status == CheckRouteStatus::Diff || self.route_status == CheckRouteStatus::Empty{
+        if self.route_status == RouteStatus::DiffLocation || self.route_status == RouteStatus::NoLocation{
             return Ordering::Less;
         }
 
@@ -322,19 +317,19 @@ impl Ord for CloudflareCheckResult {
     }
 }
 
-impl PartialOrd for CloudflareCheckResult {
+impl PartialOrd for CFCDNCheckResult {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for CloudflareCheckResult {
+impl PartialEq for CFCDNCheckResult {
     fn eq(&self, other: &Self) -> bool {
-        self.ip_address == other.ip_address && self.route_status == other.route_status && self.location_code == other.location_code
+        self.ip == other.ip && self.route_status == other.route_status && self.location_code == other.location_code
     }
 }
 
-impl Eq for CloudflareCheckResult {}
+impl Eq for CFCDNCheckResult {}
 
 #[cfg(test)]
 mod tests {
@@ -349,8 +344,8 @@ mod tests {
 
         let check_result_v4 =
             CloudflareChecker::check_cloudflare_routes(ip_v4, 2, 80, Duration::from_secs(5)).await;
-        assert_eq!(check_result_v4.ip_address, ip_v4);
-        assert_eq!(check_result_v4.route_status, CheckRouteStatus::None);
+        assert_eq!(check_result_v4.ip, ip_v4);
+        assert_eq!(check_result_v4.route_status, RouteStatus::Normal);
     }
 
     #[tokio::test]

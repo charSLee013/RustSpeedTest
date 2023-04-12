@@ -22,11 +22,11 @@ pub struct Scanner {
     // 超时设置
     timeout: Duration,
     // 设定端口
-    port: u16,
+    target_port: u16,
     // 平均延迟上限
-    avg_delay_upper: u128,
+    max_average_delay: u128,
     // 平均延迟下限
-    avg_delay_lower: u128,
+    min_average_delay: u128,
 }
 
 impl Scanner {
@@ -56,9 +56,9 @@ impl Scanner {
             batch_size,
             timeout,
             times: NonZeroU8::new(times).unwrap_or(NonZeroU8::new(1).unwrap()),
-            port,
-            avg_delay_upper,
-            avg_delay_lower,
+            target_port: port,
+            max_average_delay: avg_delay_upper,
+            min_average_delay: avg_delay_lower,
         }
     }
 
@@ -82,7 +82,7 @@ impl Scanner {
         for _ in 0..cmp::min(self.ips.len(), self.batch_size) {
             let ip = ips_iter.next().unwrap();
             let tx = tx.clone();
-            let socket = SocketAddr::new(ip, self.port);
+            let socket = SocketAddr::new(ip, self.target_port);
             let times = self.times;
             let timeout = self.timeout;
 
@@ -96,8 +96,8 @@ impl Scanner {
             if let Some(Ok(delay)) = rx.recv().await {
                 pb.set_message(format!("Addr: {}", delay.ip));
 
-                let delay_millis = delay.consume.as_millis();
-                if delay_millis < self.avg_delay_upper && delay_millis > self.avg_delay_lower {
+                let delay_millis = delay.average_delay.as_millis();
+                if delay_millis < self.max_average_delay && delay_millis > self.min_average_delay {
                     res.push(delay);
                 }
             }
@@ -105,7 +105,7 @@ impl Scanner {
             pb.inc(1);
             if let Some(ip) = ips_iter.next() {
                 let tx = tx.clone();
-                let socket = SocketAddr::new(ip, self.port);
+                let socket = SocketAddr::new(ip, self.target_port);
                 let times = self.times;
                 let timeout = self.timeout;
 
@@ -126,7 +126,7 @@ impl Scanner {
         timeout: Duration,
         socket: SocketAddr,
     ) -> std::io::Result<Delay> {
-        let mut total_duration = Duration::new(0, 0);
+        let mut total_elapsed_time = Duration::new(0, 0);
         let mut successful_calls = 0;
 
         for _ in 1..=times.get() {
@@ -143,7 +143,7 @@ impl Scanner {
                     });
 
                     successful_calls += 1;
-                    total_duration += elapsed;
+                    total_elapsed_time += elapsed;
                 }
 
                 Err(e) => {
@@ -158,8 +158,8 @@ impl Scanner {
 
         Ok(Delay {
             ip: socket.ip(),
-            consume: if successful_calls != 0 {
-                Duration::from_nanos((total_duration.as_nanos() / successful_calls as u128) as u64)
+            average_delay: if successful_calls != 0 {
+                Duration::from_nanos((total_elapsed_time.as_nanos() / successful_calls as u128) as u64)
             } else {
                 Duration::from_secs(0)
             },
@@ -170,11 +170,11 @@ impl Scanner {
 
     #[inline]
     async fn connect(
-        timeout: Duration,
-        socket: SocketAddr,
+        connection_timeout: Duration,
+        server_socket: SocketAddr,
     ) -> tokio::io::Result<tokio::net::TcpStream> {
-        let stream = tokio::time::timeout(timeout, async move {
-            tokio::net::TcpStream::connect(socket).await
+        let stream = tokio::time::timeout(connection_timeout, async move {
+            tokio::net::TcpStream::connect(server_socket).await
         })
         .await??;
         Ok(stream)
@@ -186,7 +186,7 @@ pub struct Delay {
     /// IP 地址
     pub ip: IpAddr,
     /// 平均延迟
-    pub consume: Duration,
+    pub average_delay: Duration,
     /// 成功次数
     pub success: u8,
 }
@@ -211,8 +211,8 @@ impl Ord for Delay {
             return Ordering::Less;
         }
 
-        (self.consume.as_nanos() / self.success as u128)
-            .cmp(&(other.consume.as_nanos() / other.success as u128))
+        (self.average_delay.as_nanos() / self.success as u128)
+            .cmp(&(other.average_delay.as_nanos() / other.success as u128))
     }
 }
 
@@ -224,7 +224,7 @@ impl PartialOrd for Delay {
 
 impl PartialEq for Delay {
     fn eq(&self, other: &Self) -> bool {
-        self.consume == other.consume && self.success == other.success && self.ip == other.ip
+        self.average_delay == other.average_delay && self.success == other.success && self.ip == other.ip
     }
 }
 
@@ -236,7 +236,7 @@ impl std::fmt::Display for Delay {
             f,
             "IP:{:>15} {:>10.6}ms {:>5} success",
             self.ip,
-            self.consume.as_millis(),
+            self.average_delay.as_millis(),
             self.success
         )
     }
@@ -264,7 +264,7 @@ mod test {
         assert!(scan.batch_size > 0);
         assert!(scan.timeout.as_nanos() > 0);
         assert_eq!(scan.times, NonZeroU8::new(1).unwrap());
-        assert!(scan.port > 0);
+        assert!(scan.target_port > 0);
     }
 
     #[test]
@@ -284,25 +284,25 @@ mod test {
     fn test_delay_sort() {
         let delay1 = Delay {
             ip: "127.0.0.1".parse().unwrap(),
-            consume: Duration::from_secs(1),
+            average_delay: Duration::from_secs(1),
             success: 0,
         };
 
         let delay2 = Delay {
             ip: "127.0.0.2".parse().unwrap(),
-            consume: Duration::from_secs(2),
+            average_delay: Duration::from_secs(2),
             success: 1,
         };
 
         let delay3 = Delay {
             ip: "127.0.0.3".parse().unwrap(),
-            consume: Duration::from_secs(3),
+            average_delay: Duration::from_secs(3),
             success: 2,
         };
 
         let delay4 = Delay {
             ip: "127.0.0.4".parse().unwrap(),
-            consume: Duration::from_secs(5),
+            average_delay: Duration::from_secs(5),
             success: 2,
         };
 
