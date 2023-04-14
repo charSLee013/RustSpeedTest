@@ -90,7 +90,7 @@ impl CloudflareChecker {
                         diff += 1;
                     }
                     RouteStatus::NoLocation => {
-                        valid_result.push(ip_status);
+                        // valid_result.push(ip_status);
                         empty += 1;
                     }
                 }
