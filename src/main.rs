@@ -1,3 +1,4 @@
+use httping::{HttpingChecker, HttpingResult};
 use rand::seq::index::sample;
 use std::collections::HashSet;
 use std::net::IpAddr;
@@ -10,12 +11,11 @@ use input::Opts;
 use scanner::{Delay, Scanner};
 
 mod download;
+mod httping;
 mod input;
 mod routes;
 mod scanner;
 mod utils;
-mod httping;
-
 
 fn main() {
     let opts: Opts = Opts::read();
@@ -39,16 +39,23 @@ fn main() {
 
     // tcp 测试结果
     let mut tcping_result: Option<Vec<Delay>> = None;
+    // http 测试结果
+    let mut httping_result: Option<Vec<HttpingResult>> = None;
     // http cf-ray 结果
-    let mut httping_result: Option<Vec<CFCDNCheckResult>> = None;
+    let mut cfcdn_result: Option<Vec<CFCDNCheckResult>> = None;
     // 可用IP地址集合
     let mut valis_ips: Vec<IpAddr> = Vec::new();
     // 测速结果
     let mut speedtest_result: Option<Vec<Speed>> = None;
 
-    // tcp 和 cfhttp 测试二选一
+    // tcp 和 http 和 cfhttp 选择其中一个
     if opts.cfhttping {
-        httping_result = Some(rt.block_on(run_checker(ips, &opts)));
+        cfcdn_result = Some(rt.block_on(run_checker(ips, &opts)));
+        if let Some(ref record) = cfcdn_result {
+            valis_ips = record.iter().map(|r| r.ip).collect();
+        }
+    } else if opts.httping {
+        httping_result = Some(async_std::task::block_on(run_httping(ips, &opts)));
         if let Some(ref record) = httping_result {
             valis_ips = record.iter().map(|r| r.ip).collect();
         }
@@ -68,14 +75,15 @@ fn main() {
 
     // 简单显示结果
     if opts.display != 0 {
-        display_results(&tcping_result, &httping_result, &speedtest_result, &opts);
+        display_results(&tcping_result, &cfcdn_result, &speedtest_result, &opts);
     }
 
     // 写入到csv文件中
     match utils::write_to_csv(
         &valis_ips,
         tcping_result,
-        httping_result,
+        // httping_result,
+        cfcdn_result,
         speedtest_result,
         &opts,
     ) {
@@ -89,10 +97,9 @@ fn main() {
     }
 }
 
-
 fn display_results(
     tcping_result: &Option<Vec<Delay>>,
-    httping_result: &Option<Vec<CFCDNCheckResult>>,
+    cfcdn_result: &Option<Vec<CFCDNCheckResult>>,
     speedtest_result: &Option<Vec<Speed>>,
     opts: &Opts,
 ) {
@@ -100,23 +107,36 @@ fn display_results(
         println!("Download speed test results:");
         println!("{:<16} {:<12}", "IP Address", "Download Speed (MB/s)");
         for record in results.iter().take(opts.display) {
-            let download_speed = record.total_download as f64 / 1024.0 / 1024.0 / record.consume.as_secs_f32() as f64;
+            let download_speed = record.total_download as f64
+                / 1024.0
+                / 1024.0
+                / record.consume.as_secs_f32() as f64;
             println!("{:<16} {:<12.2}", record.ip, download_speed);
         }
     } else if let Some(ref results) = tcping_result {
         println!("TCP scan results:");
-        println!("{:<16} {:<9} {:<9} {:<8} {:<14}", "IP Address", "Sent", "Received", "Loss", "Avg Delay (ms)");
+        println!(
+            "{:<16} {:<9} {:<9} {:<8} {:<14}",
+            "IP Address", "Sent", "Received", "Loss", "Avg Delay (ms)"
+        );
         for record in results.iter().take(opts.display) {
             let delay_ms = record.average_delay.as_millis();
             let loss_percent = 100.0 * (1.0 - record.success as f64 / opts.time as f64);
             println!(
                 "{:<16} {:<9} {:<9} {:<8} {:<14}",
-                record.ip, opts.time, record.success, format!("{:.1}%", loss_percent), delay_ms
+                record.ip,
+                opts.time,
+                record.success,
+                format!("{:.1}%", loss_percent),
+                delay_ms
             );
         }
-    } else if let Some(ref results) = httping_result {
+    } else if let Some(ref results) = cfcdn_result {
         println!("HTTP routing check results:");
-        println!("{:<16} {:<9} {:<9} {:<8}", "IP Address", "Status", "Location", "");
+        println!(
+            "{:<16} {:<9} {:<9} {:<8}",
+            "IP Address", "Status", "Location", ""
+        );
         for record in results.iter().take(opts.display) {
             let status_code = match record.route_status {
                 routes::RouteStatus::Normal => 200,
@@ -131,6 +151,17 @@ fn display_results(
     }
 }
 
+async fn run_httping(ips: Vec<IpAddr>, opts: &Opts) -> Vec<HttpingResult> {
+    let httping_checker = HttpingChecker::new(
+        opts.time,
+        Duration::from_millis(opts.timeout),
+        opts.port,
+        opts.number,
+        "",
+    );
+
+    httping_checker.run(ips).await
+}
 
 async fn run_downloader(ips: &[IpAddr], opts: &Opts) -> Vec<Speed> {
     let domain: String = match utils::get_domain_from_url(opts.download_url.as_str()) {
