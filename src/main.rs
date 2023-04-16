@@ -14,6 +14,8 @@ mod input;
 mod routes;
 mod scanner;
 mod utils;
+mod httping;
+
 
 fn main() {
     let opts: Opts = Opts::read();
@@ -87,62 +89,6 @@ fn main() {
     }
 }
 
-// fn display_results(
-//     tcping_result: &Option<Vec<Delay>>,
-//     httping_result: &Option<Vec<CloudflareCheckResult>>,
-//     speedtest_result: &Option<Vec<Speed>>,
-//     opts: &Opts,
-// ) {
-//     let mut headers: Vec<&str> = Vec::new(); // 标题
-//     let mut rows = Vec::new(); // 行数据
-//                                // 优先显示下载测速
-//     if (speedtest_result.is_some()) {
-//         let speed_result = speedtest_result.unwrap();
-//         headers = vec!["IP 地址", "下载速度"];
-//         for record in speed_result.iter().take(opts.display) {
-//             rows.push(format!(
-//                 "{},{:.2}MB/s",
-//                 record.ip.to_string(),
-//                 record.total_download as f64 / 1024.0 / 1024.0 / record.consume.as_secs_f64()
-//             ))
-//         }
-//         return;
-//     }
-
-//     if tcping_result.is_some() {
-//         let tcp_result = tcping_result.unwrap();
-//         headers = vec!["IP 地址", "丢包率", "延时（ms）"];
-//         for record in tcp_result.iter().take(opts.display) {
-//             let loss_rate = 1.0 - (record.success as f64 / opts.time as f64);
-//             rows.push(format!(
-//                 "{},{:.1}%,{:.2}ms",
-//                 record.ip.to_string(),
-//                 loss_rate,
-//                 record.consume.as_millis(),
-//             ))
-//         }
-//     }
-
-//     if httping_result.is_some(){
-//         let http_result = httping_result.unwrap();
-//         headers = vec!["IP 地址","状态码","区域"];
-//         for record in http_result.iter().take(opts.display){
-//             rows.push(format!(
-//                 "{},{},{}",
-//                 record.ip_address.to_string(),
-//                 match record.route_status {
-//                     routes::CheckRouteStatus::None => "Normal",
-//                     routes::CheckRouteStatus::Diff => "Diff",
-//                     routes::CheckRouteStatus::Empty => "Empty",
-//                 },
-//                 record.location_code,
-//             ));
-//         }
-//     }
-//         // 打印表格
-//         print_table(headers, rows);
-// }
-
 
 fn display_results(
     tcping_result: &Option<Vec<Delay>>,
@@ -185,45 +131,6 @@ fn display_results(
     }
 }
 
-// pub fn print_table(headers: Vec<String>, rows: Vec<String>) {
-//     let num_columns = headers.len();
-//     let max_widths: Vec<_> = (0..num_columns)
-//         .map(|col_index| {
-//             let mut max_width = headers[col_index].len();
-//             for row in &rows {
-//                 if row[col_index].len() > max_width {
-//                     max_width = row[col_index].len();
-//                 }
-//             }
-//             max_width
-//         })
-//         .collect();
-
-//     let divider: String = max_widths
-//         .iter()
-//         .map(|max_width| "-".repeat(max_width + 2))
-//         .collect::<Vec<_>>()
-//         .join("+");
-
-//     let header_str: String = headers
-//         .iter()
-//         .enumerate()
-//         .map(|(i, header)| format!("{0:<1$} | ", header, max_widths[i]))
-//         .collect();
-
-//     println!("{}\n| {}|", divider, header_str);
-
-//     for row in rows {
-//         let row_str: String = row
-//             .into_iter()
-//             .enumerate()
-//             .map(|(i, cell)| format!("{0:<1$} | ", cell, max_widths[i]))
-//             .collect();
-//         println!("{}\n| {}|", divider, row_str);
-//     }
-
-//     println!("{}", divider);
-// }
 
 async fn run_downloader(ips: &[IpAddr], opts: &Opts) -> Vec<Speed> {
     let domain: String = match utils::get_domain_from_url(opts.download_url.as_str()) {
