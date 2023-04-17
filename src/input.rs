@@ -71,6 +71,10 @@ pub struct Opts {
     #[structopt(long,default_value = "5")]
     pub check_times:u64,
 
+    /// Check http ping
+    #[structopt(long)]
+    pub httping: bool,
+
     /// The files or CIDRs to process [default=ip.txt].
     /// Example: 'rustspeedtest -n 2500 -d 20 -- 192.168.1.1/24'.
     #[structopt(last = true)]
@@ -96,6 +100,7 @@ impl Default for Opts {
             download_timeout: 5,
             cfhttping:false,
             check_times:10,
+            httping:false,
             args: vec![],
         }
     }

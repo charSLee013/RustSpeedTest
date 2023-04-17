@@ -45,7 +45,6 @@ impl CloudflareChecker {
         let mut ips_iter = self.ips.clone().into_iter();
 
         // process bar
-        let total = total;
         let pb = ProgressBar::new(total as u64);
         pb.set_style(
             ProgressStyle::with_template(
@@ -219,6 +218,7 @@ impl CloudflareChecker {
         request_timeout: Duration,
     ) -> Option<String> {
         let address = format!("{}:{}", ip_address, request_port);
+
         // Connect to host:80
         let mut stream = match CloudflareChecker::tcp_connect(address, request_timeout).await {
             Ok(stream) => stream,
@@ -226,6 +226,7 @@ impl CloudflareChecker {
                 return None;
             }
         };
+
         // Write an HTTP GET request
         if (CloudflareChecker::write_with_timeout(
             &mut stream,
@@ -240,6 +241,8 @@ impl CloudflareChecker {
         {
             return None;
         }
+
+
         // Read the response from the stream into a buffer
         let mut buffer = [0; 1024];
         if (CloudflareChecker::read_with_timeout(&mut stream, &mut buffer, request_timeout).await).is_err()
@@ -257,7 +260,7 @@ impl CloudflareChecker {
         // Split the response into lines
         let lines: Vec<&str> = response.split("\r\n").collect();
         // Find the line that starts with CF-ray header
-        let cf_ray_line = if let Some(line) = lines.iter().find(|line| line.starts_with("CF-RAY")) {
+        let cf_ray_line = if let Some(line) = lines.iter().find(|line| line.to_uppercase().starts_with("CF-RAY")) {
             line
         } else {
             return None;

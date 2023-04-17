@@ -7,6 +7,7 @@ use std::io::BufRead;
 use std::{io, net::IpAddr};
 
 use crate::download::Speed;
+use crate::httping::HttpingResult;
 use crate::input::Opts;
 use crate::routes::{CFCDNCheckResult, self};
 use crate::scanner::Delay;
@@ -27,7 +28,8 @@ pub fn parse_addresses(ips_str: &str) -> Vec<IpAddr> {
 pub fn write_to_csv(
     valis_ips: &[IpAddr],
     tcping_result: Option<Vec<Delay>>,
-    httping_result: Option<Vec<CFCDNCheckResult>>,
+    // httping_result:Option<Vec<HttpingResult>>,
+    cfcdn_result: Option<Vec<CFCDNCheckResult>>,
     speedtest_result: Option<Vec<Speed>>,
     opts: &Opts,
 ) -> Result<(), Box<dyn Error>> {
@@ -39,7 +41,7 @@ pub fn write_to_csv(
     if tcping_result.is_some() {
         titel.push_str(",Loss,Delay(ms)");
     }
-    if httping_result.is_some() {
+    if cfcdn_result.is_some() {
         titel.push_str(",Status,Area");
     }
 
@@ -57,8 +59,8 @@ pub fn write_to_csv(
         None
     };
 
-    let httping_map = if httping_result.is_some(){
-        Some(CFCDNCheckResult::to_map(httping_result.unwrap_or(vec![])))
+    let httping_map = if cfcdn_result.is_some(){
+        Some(CFCDNCheckResult::to_map(cfcdn_result.unwrap_or(vec![])))
     } else {
         None
     };
