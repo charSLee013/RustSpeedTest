@@ -72,7 +72,7 @@ pub struct Opts {
     pub check_times:u64,
 
     /// Check http ping
-    #[structopt(short, long)]
+    #[structopt(long)]
     pub httping: bool,
 
     /// The files or CIDRs to process [default=ip.txt].

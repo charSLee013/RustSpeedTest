@@ -1,14 +1,14 @@
 use std::{cmp, net::IpAddr, time::Duration};
 
-use async_std::{net::TcpStream, io};
-use futures::{stream::FuturesUnordered, StreamExt, AsyncWriteExt, AsyncReadExt};
+use async_std::{io, net::TcpStream};
+use futures::{stream::FuturesUnordered, AsyncReadExt, AsyncWriteExt, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::seq::SliceRandom;
 
 #[derive(Debug, PartialEq)]
 pub struct HttpingChecker<'a> {
     // ips: Vec<IpAddr>,          // List of IP addresses to check
-    tries_per_ip: u8,         // Number of times to check each IP address
+    tries_per_ip: u8,          // Number of times to check each IP address
     request_timeout: Duration, // HTTP request timeout
     request_port: u16,         // HTTP request port
     batch_size: usize,         // Batch size for concurrent requests
@@ -24,10 +24,11 @@ const USER_AGENTS: [&str; 5] = [
 ];
 
 const REQUEST_TEMPLATE: &str = "GET / HTTP/1.1\r\n\
-                                Host: example.com\r\n\
+                                Accept: */*\r\n\
                                 Connection: close\r\n\
+                                Host: {}\r\n
                                 User-Agent: {}\r\n\
-                                {}\r\n";
+                                {}\r\n\r\n";
 
 impl<'a> HttpingChecker<'a> {
     pub fn new(
@@ -48,7 +49,7 @@ impl<'a> HttpingChecker<'a> {
         }
     }
 
-    pub async fn run(&self,ips:Vec<IpAddr>) -> Vec<HttpingResult> {
+    pub async fn run(&self, ips: Vec<IpAddr>) -> Vec<HttpingResult> {
         let mut valid_result = Vec::new();
 
         // use async-std
@@ -102,10 +103,7 @@ impl<'a> HttpingChecker<'a> {
         valid_result
     }
 
-    async fn connect_with_retry(
-        &self,
-        addr: &str,
-    ) -> Option<TcpStream> {
+    async fn connect_with_retry(&self, addr: &str) -> Option<TcpStream> {
         for _ in 1..=self.tries_per_ip {
             if let Ok(stream) = self.tcp_connect(addr).await {
                 return Some(stream);
@@ -125,12 +123,15 @@ impl<'a> HttpingChecker<'a> {
         // try to connect to the host
         let mut stream = match self.connect_with_retry(&address).await {
             Some(tcp_stream) => tcp_stream,
-            None => return http_result,
+            None => {
+                return http_result;
+            }
         };
 
         // Send HTTP GET request
         let user_agent = USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
         let request = REQUEST_TEMPLATE
+            .replace("{}", &ip_address.to_string())
             .replace("{}", user_agent)
             .replace("{}", self.headers);
 
@@ -151,8 +152,8 @@ impl<'a> HttpingChecker<'a> {
         // Shutdown TCP stream
         match stream.shutdown(std::net::Shutdown::Both) {
             Ok(_) => (),
-            Err(_) => return http_result,
-        }
+            Err(_) => (),
+        } 
 
         // Check if the server returned a valid HTTP response
         let response = String::from_utf8_lossy(&buf);
@@ -186,13 +187,11 @@ impl<'a> HttpingChecker<'a> {
     }
 
     #[inline]
-    async fn tcp_connect(&self,address: &str) -> io::Result<TcpStream> {
-        let stream =
-        io::timeout(
-                self.request_timeout,
-                async move { TcpStream::connect(address).await },
-            )
-            .await?;
+    async fn tcp_connect(&self, address: &str) -> io::Result<TcpStream> {
+        let stream = io::timeout(self.request_timeout, async move {
+            TcpStream::connect(address).await
+        })
+        .await?;
         Ok(stream)
     }
 }
