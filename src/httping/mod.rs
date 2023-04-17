@@ -82,8 +82,10 @@ impl<'a> HttpingChecker<'a> {
             if result.valid {
                 good += 1;
                 valid_result.push(result);
+                pb.inc(1);
             } else {
                 bad += 1;
+                pb.inc(1);
             }
             if let Some(ip_address) = ips_iter.next() {
                 ftrs.push(self.spawn_checker_task(ip_address.to_owned()));
