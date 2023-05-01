@@ -196,8 +196,8 @@ async fn run_scanner(ips: Vec<IpAddr>, opts: &Opts) -> Vec<Delay> {
         Duration::from_millis(opts.timeout),
         opts.time,
         opts.port,
-        opts.avg_delay_upper,
-        opts.avg_delay_lower,
+        opts.au,
+        opts.al,
     );
 
     let mut result = scanner.run().await;

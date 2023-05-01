@@ -45,11 +45,11 @@ pub struct Opts {
 
     /// The average delay upper limit to filter the IPs, unit is ms.
     #[structopt(long, default_value = "9999")]
-    pub avg_delay_upper: u128,
+    pub au: u128,
 
     /// The average delay lower limit to filter the IPs, unit is ms.
     #[structopt(long, default_value = "0")]
-    pub avg_delay_lower: u128,
+    pub al: u128,
 
     /// The download url for download speed test
     #[structopt(
@@ -94,8 +94,8 @@ impl Default for Opts {
             download_port: 443,
             download_number: 10,
             random_number: 0,
-            avg_delay_upper: 9999,
-            avg_delay_lower: 0,
+            au: 9999,
+            al: 0,
             download_url: "https://speed.cloudflare.com/__down?bytes=200000000".to_string(),
             download_timeout: 5,
             cfhttping:false,
