@@ -10,6 +10,7 @@ use std::{
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 
+
 #[derive(Debug)]
 // 扫描基本设置
 pub struct Scanner {

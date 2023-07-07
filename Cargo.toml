@@ -5,7 +5,7 @@ edition = "2021"
 homepage = "https://github.com/charSLee013/RustSpeedTest"
 repository = "https://github.com/charSLee013/RustSpeedTest"
 license = "MIT"
-keywords = ["speedtest", "tcp latency", "speedtest"]
+keywords = ["speedtest", "tcp latency", "httping"]
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,13 +13,25 @@ readme = "README.md"
 cidr-utils = "0.5.9"
 futures = "0.3"
 rand = "0.8.5"
-indicatif = "0.17.2"
+indicatif = { version = "0.17.1", default-features = false, features = ["improved_unicode"] }
 clap = "4.0.29"
-structopt = "0.3.20"
+structopt = { version = "0.3.26", default-features = false, features = ["default", "color"] }
 reqwest = { version = "0.11.13", features = ["gzip", "stream"] }
 url = "2.3.1"
 tokio = { version = "1.23.0", features = ["full"] }
 async-std = {version ="1.12.0",features = ["attributes","tokio1"]}
+# monoio = {version = "*",features = ["sync"]}
+value-bag = "1.4.0"
+
+log = { version = "0.4.17", default-features = false, features = ["max_level_trace", "release_max_level_info", "std"] }
+bstr = { version = "1.0.1", default-features = false, features = ["std"] }
+io-uring = { version = "0.5.9", default-features = false, features = ["unstable"] }
+ipnet = { version = "2.5.0", default-features = false }
+iprange = { version = "0.6.7", default-features = false, features = ["serde"] }
+nix = { version = "0.25.0", default-features = false, features = ["net", "resource", "socket"] }
+regex = { version = "1.7.0", default-features = false, features = ["perf", "std"] }
+simple_logger = { version = "2.3.0", default-features = false, features = ["colors", "stderr"] }
+
 
 [profile.release]
 lto = true

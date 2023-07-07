@@ -12,7 +12,7 @@ use tokio::{
 /// Checker struct, used to check the Cloudflare CDN IP routes
 pub struct CloudflareChecker {
     ips: Vec<IpAddr>, // List of IP addresses to check
-    tries_per_ip: u64,         // Number of times to check each IP address
+    https://chat2.jinshutuan.com/: u64,         // Number of times to check each IP address
     request_timeout: Duration, // HTTP request timeout
     request_port: u16,         // HTTP request port
     batch_size: usize,         // Batch size for concurrent requests

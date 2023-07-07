@@ -150,7 +150,7 @@ mod test {
         utils::{human_readable_size, parse_addresses},
     };
 
-    use super::get_domain_from_url;
+    use super::*;
 
     #[test]
     /// Makes sure the network is available
@@ -217,7 +217,5 @@ mod test {
         };
         let result = parse_addresses_from_opt(&opts);
         assert_eq!(result.len(), 50);
-    }
-
-    
+    }    
 }
