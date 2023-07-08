@@ -95,7 +95,7 @@ impl Scan for ScanTcpConnect {
                 let ret = cq_entry.result();
                 if ret == 0 {
                     // 打印成功连接的 IP 地址 和 延迟时间
-                    log::info!("IP: {} \t latency: {}", &entry_info.ip, &entry_info.start.elapsed().as_millis());
+                    log::info!("IP: {} \t latency: {}ms", &entry_info.ip, &entry_info.start.elapsed().as_millis());
                 }
                 false
             }
