@@ -27,7 +27,12 @@ mod scan_iouring;
 
 fn main() -> io::Result<()> {
     // 初始化日志
+    #[cfg(not(debug_assertions))]
     simple_logger::init_with_env().expect("Failed to init logger");
+
+    #[cfg(debug_assertions)]
+    // only warn on debug model
+    simple_logger::init_with_level(log::Level::Warn).unwrap();
 
     // 接收参数
     let mut opts: Opts = Opts::read();
