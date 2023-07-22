@@ -114,11 +114,11 @@ impl CloudflareChecker {
                 });
             } 
         }
-        pb.finish_with_message("finshed");
+        pb.finish_with_message("finished");
 
         // summary all ip routes status
         println!(
-            "vaild: {} \t empty: {} \t diff: {}",
+            "valid: {} \t empty: {} \t diff: {}",
             valid_result.len(),
             empty,
             diff

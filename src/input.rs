@@ -94,7 +94,7 @@ pub struct Opts {
     pub scan_opts: ScanOptions,
 }
 
-/// Scan spcific options
+/// Scan specific options
 #[derive(Debug, structopt::StructOpt)]
 pub enum ScanOptions {
     Http(HttpScanOptions),

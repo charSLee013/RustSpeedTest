@@ -92,7 +92,7 @@ impl<'a> HttpingChecker<'a> {
             }
         }
 
-        pb.finish_with_message("finshed");
+        pb.finish_with_message("finished");
 
         // summary all http status
         println!(

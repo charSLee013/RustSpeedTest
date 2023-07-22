@@ -44,7 +44,7 @@ impl Downloader {
     pub async fn run(&self) -> Vec<Speed> {
         let mut speeds = Vec::new();
         if self.ips.is_empty() {
-            println!("No measureable IP addresss");
+            println!("No measureable IP address");
             return speeds;
         }
 

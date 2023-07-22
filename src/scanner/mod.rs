@@ -117,7 +117,7 @@ impl Scanner {
             }
         }
 
-        pb.finish_with_message("finshed");
+        pb.finish_with_message("finished");
 
         res
     }

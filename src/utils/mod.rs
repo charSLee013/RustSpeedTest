@@ -34,24 +34,24 @@ pub fn write_to_csv(
     opts: &Opts,
 ) -> Result<(), Box<dyn Error>> {
     let mut csv = String::new();
-    let mut titel = String::with_capacity(200);
-    titel.push_str("IP");
+    let mut title = String::with_capacity(200);
+    title.push_str("IP");
 
     // tcp 测速标题
     if tcping_result.is_some() {
-        titel.push_str(",Loss,Delay(ms)");
+        title.push_str(",Loss,Delay(ms)");
     }
     if cfcdn_result.is_some() {
-        titel.push_str(",Status,Area");
+        title.push_str(",Status,Area");
     }
 
     if speedtest_result.is_some() {
-        titel.push_str(",Speed(MB/s)");
+        title.push_str(",Speed(MB/s)");
     }
-    titel.push('\n');
+    title.push('\n');
 
     // add title
-    csv.push_str(&titel);
+    csv.push_str(&title);
 
     let tcping_map = if tcping_result.is_some(){
         Some(Delay::to_map(tcping_result.unwrap_or(vec![])))
@@ -86,9 +86,9 @@ pub fn write_to_csv(
         }
 
         // push http result
-        if let Some(ref recrod) = httping_map{
-            if recrod.contains_key(ip){
-                let value = recrod.get(ip).unwrap();
+        if let Some(ref record) = httping_map{
+            if record.contains_key(ip){
+                let value = record.get(ip).unwrap();
                 line.push_str(match value.route_status {
                     routes::RouteStatus::Normal => ",Normal,",
                     routes::RouteStatus::DiffLocation => ",Diff,",
