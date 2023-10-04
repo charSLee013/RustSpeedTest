@@ -231,7 +231,7 @@ impl CloudflareChecker {
         if (CloudflareChecker::write_with_timeout(
             &mut stream,
             format!(
-                "GET / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+                "GET /cdn-cgi/trace HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
                 ip_address
             )
             .as_bytes(),
